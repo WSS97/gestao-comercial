@@ -64,6 +64,8 @@ export type WorkOrderItem = {
   name: string;
   qty: number;
   unit_price: number;
+  discount_type?: 'fixed' | 'percentage';
+  discount_value?: number;
   subtotal: number;
 };
 

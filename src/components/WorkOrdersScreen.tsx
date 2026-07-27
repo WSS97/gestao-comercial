@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Wrench, Plus, Trash2, Printer, Loader2, X, Check, FileText,
-  User, Smartphone, Shield, Search, Ban, Eye,
+  User, Smartphone, Shield, Search, Ban, Eye, Package,
 } from 'lucide-react';
 import {
-  supabase, type WorkOrder, type WorkOrderItem, type AuthorizedDevice,
+  supabase, type WorkOrder, type WorkOrderItem, type AuthorizedDevice, type Product,
 } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
 
@@ -24,6 +24,15 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELADO: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400',
 };
 
+const DEFAULT_WARRANTY = `1. Prazo de Garantia: 90 dias a contar desta data (ou garantia oficial da fabricante caso o aparelho seja novo lacrado).
+2. A garantia cobre exclusivamente defeitos de fabricação ou vícios de funcionamento do hardware.
+3. A GARANTIA SERÁ AUTOMATICAMENTE ANULADA EM CASO DE:
+- Quedas, trincados, riscos profundos ou marcas de impacto;
+- Contato com líquidos, umidade ou oxidação interna;
+- Remoção ou violação dos selos de garantia da loja/aparelho;
+- Tentativa de desbloqueio, "root" ou manutenção por terceiros;
+- Qualquer dano causado por mau uso em geral.`;
+
 type FormState = {
   customer_name: string;
   customer_phone: string;
@@ -32,8 +41,6 @@ type FormState = {
   equipment_imei: string;
   defect_notes: string;
   warranty_terms: string;
-  discount_type: 'fixed' | 'percentage';
-  discount_value: string;
   items: WorkOrderItem[];
   status: string;
 };
@@ -45,12 +52,19 @@ const EMPTY_FORM: FormState = {
   equipment_model: '',
   equipment_imei: '',
   defect_notes: '',
-  warranty_terms: '',
-  discount_type: 'fixed',
-  discount_value: '',
-  items: [{ name: '', qty: 1, unit_price: 0, subtotal: 0 }],
+  warranty_terms: DEFAULT_WARRANTY,
+  items: [{ name: '', qty: 1, unit_price: 0, discount_type: 'fixed', discount_value: 0, subtotal: 0 }],
   status: 'CONCLUIDO',
 };
+
+function itemSubtotal(it: WorkOrderItem): number {
+  const gross = Number(it.qty) * Number(it.unit_price);
+  const dv = Number(it.discount_value) || 0;
+  if (it.discount_type === 'percentage') {
+    return Math.max(gross - gross * (Math.min(dv, 100) / 100), 0);
+  }
+  return Math.max(gross - Math.min(dv, gross), 0);
+}
 
 export default function WorkOrdersScreen() {
   const [orders, setOrders] = useState<WorkOrder[]>([]);
@@ -80,13 +94,8 @@ export default function WorkOrdersScreen() {
     setCompany(getDeviceInfo());
   }, [fetchOrders]);
 
-  const itemsSubtotal = form.items.reduce((s, i) => s + i.subtotal, 0);
-  const discountNum = parseFloat(form.discount_value.replace(',', '.')) || 0;
-  const discount =
-    form.discount_type === 'percentage'
-      ? Math.min(itemsSubtotal * (discountNum / 100), itemsSubtotal)
-      : Math.min(discountNum, itemsSubtotal);
-  const total = Math.max(itemsSubtotal - discount, 0);
+  const itemsSubtotal = form.items.reduce((s, i) => s + itemSubtotal(i), 0);
+  const total = itemsSubtotal;
 
   const updateItem = (idx: number, patch: Partial<WorkOrderItem>) => {
     setForm((f) => ({
@@ -94,7 +103,7 @@ export default function WorkOrdersScreen() {
       items: f.items.map((it, i) => {
         if (i !== idx) return it;
         const next = { ...it, ...patch };
-        next.subtotal = Number(next.qty) * Number(next.unit_price);
+        next.subtotal = itemSubtotal(next);
         return next;
       }),
     }));
@@ -103,7 +112,7 @@ export default function WorkOrdersScreen() {
   const addItem = () =>
     setForm((f) => ({
       ...f,
-      items: [...f.items, { name: '', qty: 1, unit_price: 0, subtotal: 0 }],
+      items: [...f.items, { name: '', qty: 1, unit_price: 0, discount_type: 'fixed', discount_value: 0, subtotal: 0 }],
     }));
 
   const removeItem = (idx: number) =>
@@ -113,7 +122,7 @@ export default function WorkOrdersScreen() {
     }));
 
   const resetForm = () => {
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, warranty_terms: DEFAULT_WARRANTY });
     setSignature(null);
     setError('');
   };
@@ -128,27 +137,23 @@ export default function WorkOrdersScreen() {
       setError('Informe o nome do cliente.');
       return;
     }
-    if (form.items.length === 0 || form.items.every((i) => !i.name.trim())) {
+    const filled = form.items.filter((i) => i.name.trim());
+    if (filled.length === 0) {
       setError('Adicione ao menos um item.');
       return;
     }
     setSaving(true);
     setError('');
     const device = getDeviceInfo();
-    const cleanItems = form.items
-      .filter((i) => i.name.trim())
-      .map((i) => ({
-        name: i.name.trim(),
-        qty: Number(i.qty) || 1,
-        unit_price: Number(i.unit_price) || 0,
-        subtotal: (Number(i.qty) || 1) * (Number(i.unit_price) || 0),
-      }));
+    const cleanItems = filled.map((i) => ({
+      name: i.name.trim(),
+      qty: Number(i.qty) || 1,
+      unit_price: Number(i.unit_price) || 0,
+      discount_type: i.discount_type ?? 'fixed',
+      discount_value: Number(i.discount_value) || 0,
+      subtotal: itemSubtotal(i),
+    }));
     const cleanSubtotal = cleanItems.reduce((s, i) => s + i.subtotal, 0);
-    const cleanDiscount =
-      form.discount_type === 'percentage'
-        ? Math.min(cleanSubtotal * (discountNum / 100), cleanSubtotal)
-        : Math.min(discountNum, cleanSubtotal);
-    const cleanTotal = Math.max(cleanSubtotal - cleanDiscount, 0);
 
     const payload = {
       device_id: device?.id ?? null,
@@ -160,9 +165,9 @@ export default function WorkOrdersScreen() {
       defect_notes: form.defect_notes.trim() || null,
       items_json: cleanItems,
       subtotal: cleanSubtotal,
-      discount_type: form.discount_type,
-      discount_value: cleanDiscount,
-      total_amount: cleanTotal,
+      discount_type: 'fixed',
+      discount_value: 0,
+      total_amount: cleanSubtotal,
       warranty_terms: form.warranty_terms.trim() || null,
       status: form.status,
     };
@@ -302,7 +307,6 @@ export default function WorkOrdersScreen() {
           signature={signature}
           setSignature={setSignature}
           itemsSubtotal={itemsSubtotal}
-          discount={discount}
           total={total}
           updateItem={updateItem}
           addItem={addItem}
@@ -326,7 +330,7 @@ export default function WorkOrdersScreen() {
 
 function WorkOrderForm({
   form, setForm, signature, setSignature,
-  itemsSubtotal, discount, total,
+  itemsSubtotal, total,
   updateItem, addItem, removeItem,
   onSubmit, onClose, saving, error,
 }: {
@@ -335,7 +339,6 @@ function WorkOrderForm({
   signature: string | null;
   setSignature: (s: string | null) => void;
   itemsSubtotal: number;
-  discount: number;
   total: number;
   updateItem: (idx: number, patch: Partial<WorkOrderItem>) => void;
   addItem: () => void;
@@ -430,39 +433,13 @@ function WorkOrderForm({
           <Section icon={FileText} title="Itens / Serviços">
             <div className="space-y-2">
               {form.items.map((it, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                  <input
-                    value={it.name}
-                    onChange={(e) => updateItem(idx, { name: e.target.value })}
-                    placeholder="Descrição do item"
-                    className="col-span-5 px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    value={it.qty}
-                    onChange={(e) => updateItem(idx, { qty: Number(e.target.value) })}
-                    className="col-span-2 px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand-teal"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={it.unit_price}
-                    onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) })}
-                    placeholder="Preço"
-                    className="col-span-3 px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
-                  />
-                  <span className="col-span-1 text-right text-xs font-medium text-slate-600 dark:text-slate-300">
-                    {BRL(it.subtotal)}
-                  </span>
-                  <button
-                    onClick={() => removeItem(idx)}
-                    className="col-span-1 w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center justify-center transition-colors mx-auto"
-                  >
-                    <Trash2 className="w-4 h-4" strokeWidth={2} />
-                  </button>
-                </div>
+                <ItemRow
+                  key={idx}
+                  item={it}
+                  idx={idx}
+                  updateItem={updateItem}
+                  removeItem={removeItem}
+                />
               ))}
               <button
                 onClick={addItem}
@@ -472,43 +449,13 @@ function WorkOrderForm({
               </button>
             </div>
 
-            {/* Discount + totals */}
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <Field label="Desconto">
-                <div className="flex gap-1">
-                  <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
-                    <button
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, discount_type: 'fixed' }))}
-                      className={`px-2 py-2 text-xs ${form.discount_type === 'fixed' ? 'bg-brand-teal text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
-                    >R$</button>
-                    <button
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, discount_type: 'percentage' }))}
-                      className={`px-2 py-2 text-xs ${form.discount_type === 'percentage' ? 'bg-brand-teal text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
-                    >%</button>
-                  </div>
-                  <input
-                    value={form.discount_value}
-                    onChange={(e) => setForm((f) => ({ ...f, discount_value: e.target.value }))}
-                    placeholder="0,00"
-                    inputMode="decimal"
-                    className="flex-1 min-w-0 px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
-                  />
-                </div>
-              </Field>
-              <div className="text-sm space-y-1 sm:col-span-2">
-                <div className="flex justify-between text-slate-500 dark:text-slate-400">
-                  <span>Subtotal</span><span>{BRL(itemsSubtotal)}</span>
-                </div>
-                {discount > 0 && (
-                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-                    <span>Desconto</span><span>- {BRL(discount)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-bold text-slate-900 dark:text-white">
-                  <span>Total</span><span>{BRL(total)}</span>
-                </div>
+            {/* Totals */}
+            <div className="mt-3 text-sm space-y-1">
+              <div className="flex justify-between text-slate-500 dark:text-slate-400">
+                <span>Subtotal</span><span>{BRL(itemsSubtotal)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-slate-900 dark:text-white pt-1 border-t border-slate-200 dark:border-slate-700">
+                <span>Total</span><span>{BRL(total)}</span>
               </div>
             </div>
           </Section>
@@ -518,10 +465,16 @@ function WorkOrderForm({
             <textarea
               value={form.warranty_terms}
               onChange={(e) => setForm((f) => ({ ...f, warranty_terms: e.target.value }))}
-              rows={3}
-              className={inputCls + ' resize-none'}
-              placeholder="Ex.: Garantia de 90 dias para peças e mão de obra. Não cobre danos por mau uso, quedas ou líquidos."
+              rows={9}
+              className={inputCls + ' resize-y text-xs leading-relaxed'}
             />
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, warranty_terms: DEFAULT_WARRANTY }))}
+              className="text-[11px] text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light mt-1 flex items-center gap-1"
+            >
+              <Shield className="w-3 h-3" /> Restaurar texto padrão
+            </button>
           </Section>
 
           {/* Signature */}
@@ -568,6 +521,182 @@ function WorkOrderForm({
             {saving ? 'Salvando...' : 'Salvar OS'}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Item Row with suggestions ---------------- */
+
+function ItemRow({
+  item,
+  idx,
+  updateItem,
+  removeItem,
+}: {
+  item: WorkOrderItem;
+  idx: number;
+  updateItem: (idx: number, patch: Partial<WorkOrderItem>) => void;
+  removeItem: (idx: number) => void;
+}) {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [query, setQuery] = useState(item.name);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setQuery(item.name);
+  }, [item.name]);
+
+  useEffect(() => {
+    if (!showSuggest) return;
+    const t = setTimeout(async () => {
+      const q = query.trim().toLowerCase();
+      let data: Product[] | null = null;
+      if (q) {
+        const res = await supabase
+          .from('products')
+          .select('id, name, price, stock, category, created_at')
+          .ilike('name', `%${q}%`)
+          .limit(6);
+        data = (res.data as Product[]) ?? [];
+      } else {
+        const res = await supabase
+          .from('products')
+          .select('id, name, price, stock, category, created_at')
+          .order('name')
+          .limit(6);
+        data = (res.data as Product[]) ?? [];
+      }
+      setProducts(data ?? []);
+    }, 180);
+    return () => clearTimeout(t);
+  }, [query, showSuggest]);
+
+  useEffect(() => {
+    if (!showSuggest) return;
+    const handler = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
+        setShowSuggest(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showSuggest]);
+
+  const pickProduct = (p: Product) => {
+    updateItem(idx, { name: p.name, unit_price: p.price });
+    setQuery(p.name);
+    setShowSuggest(false);
+  };
+
+  const hasDiscount = (Number(item.discount_value) || 0) > 0;
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-2.5 space-y-2 bg-slate-50/50 dark:bg-slate-800/20">
+      <div className="grid grid-cols-12 gap-2 items-center">
+        {/* Name with suggestions */}
+        <div ref={boxRef} className="col-span-5 relative">
+          <input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              updateItem(idx, { name: e.target.value });
+              setShowSuggest(true);
+            }}
+            onFocus={() => setShowSuggest(true)}
+            placeholder="Digite ou selecione do estoque"
+            className="w-full px-2.5 py-2 rounded-lg bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
+          />
+          {showSuggest && products.length > 0 && (
+            <div className="absolute z-20 mt-1 w-full rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg max-h-48 overflow-y-auto">
+              {products.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => pickProduct(p)}
+                  className="w-full flex items-center justify-between px-2.5 py-2 text-left hover:bg-brand-teal/5 dark:hover:bg-brand-teal/10 transition-colors border-b border-slate-100 dark:border-slate-700/60 last:border-0"
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    <Package className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="text-sm text-slate-900 dark:text-white truncate">{p.name}</span>
+                  </span>
+                  <span className="text-xs font-medium text-brand-teal-dark dark:text-brand-teal-light shrink-0 ml-2">
+                    {BRL(p.price)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <input
+          type="number"
+          min={1}
+          value={item.qty}
+          onChange={(e) => updateItem(idx, { qty: Number(e.target.value) })}
+          title="Quantidade"
+          className="col-span-2 px-2.5 py-2 rounded-lg bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand-teal"
+        />
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={item.unit_price}
+          onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) })}
+          placeholder="Preço"
+          title="Preço unitário"
+          className="col-span-3 px-2.5 py-2 rounded-lg bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
+        />
+        <span className="col-span-1 text-right text-xs font-medium text-slate-600 dark:text-slate-300">
+          {BRL(item.subtotal)}
+        </span>
+        <button
+          onClick={() => removeItem(idx)}
+          className="col-span-1 w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center justify-center transition-colors mx-auto"
+        >
+          <Trash2 className="w-4 h-4" strokeWidth={2} />
+        </button>
+      </div>
+
+      {/* Per-item discount */}
+      <div className="flex items-center gap-2 pl-1">
+        <button
+          type="button"
+          onClick={() => updateItem(idx, { discount_value: hasDiscount ? 0 : undefined })}
+          className={`flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md transition-colors ${
+            hasDiscount
+              ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
+              : 'text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light'
+          }`}
+        >
+          <Shield className="w-3 h-3" />
+          {hasDiscount ? 'Desconto ativo' : 'Aplicar desconto'}
+        </button>
+        {hasDiscount && (
+          <div className="flex items-center gap-1">
+            <div className="flex rounded-md overflow-hidden border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => updateItem(idx, { discount_type: 'fixed' })}
+                className={`px-1.5 py-1 text-[11px] ${item.discount_type === 'fixed' ? 'bg-brand-teal text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
+              >R$</button>
+              <button
+                type="button"
+                onClick={() => updateItem(idx, { discount_type: 'percentage' })}
+                className={`px-1.5 py-1 text-[11px] ${item.discount_type === 'percentage' ? 'bg-brand-teal text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
+              >%</button>
+            </div>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={item.discount_value ?? 0}
+              onChange={(e) => updateItem(idx, { discount_value: Number(e.target.value) })}
+              className="w-20 px-2 py-1 rounded-md bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-brand-teal"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -676,7 +805,6 @@ function PrintPreview({
   onClose: () => void;
 }) {
   const items = (order.items_json ?? []) as WorkOrderItem[];
-  const discount = Number(order.discount_value) || 0;
 
   const handlePrint = () => {
     const node = document.getElementById('os-print-area');
@@ -705,10 +833,12 @@ function PrintPreview({
         th { text-align: left; padding: 6px 8px; background: #f1f5f9; color: #475569; font-weight: 600; font-size: 11px; text-transform: uppercase; }
         td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
         td.right { text-align: right; }
+        td.center { text-align: center; }
+        .item-disc { font-size: 10px; color: #059669; }
         .totals { margin-top: 10px; margin-left: auto; width: 260px; font-size: 12px; }
         .totals .row { display: flex; justify-content: space-between; padding: 2px 0; }
         .totals .grand { font-size: 15px; font-weight: 700; border-top: 2px solid #0f172a; padding-top: 6px; margin-top: 4px; }
-        .warranty { margin-top: 16px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; font-size: 11px; color: #334155; line-height: 1.5; }
+        .warranty { margin-top: 16px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; font-size: 11px; color: #334155; line-height: 1.6; white-space: pre-line; }
         .sign-row { display: flex; justify-content: space-between; gap: 24px; margin-top: 28px; }
         .sign-box { flex: 1; text-align: center; }
         .sign-img { height: 70px; margin: 0 auto 4px; display: block; }
@@ -808,25 +938,38 @@ function PrintPreview({
                       <th>Descrição</th>
                       <th className="text-center">Qtd</th>
                       <th className="text-right">Unitário</th>
+                      <th className="text-right">Desc.</th>
                       <th className="text-right">Subtotal</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((it, i) => (
-                      <tr key={i}>
-                        <td>{it.name}</td>
-                        <td className="text-center">{it.qty}</td>
-                        <td className="right">{BRL(Number(it.unit_price))}</td>
-                        <td className="right">{BRL(Number(it.subtotal))}</td>
-                      </tr>
-                    ))}
+                    {items.map((it, i) => {
+                      const dv = Number(it.discount_value) || 0;
+                      const gross = Number(it.qty) * Number(it.unit_price);
+                      const disc = it.discount_type === 'percentage'
+                        ? gross * (Math.min(dv, 100) / 100)
+                        : Math.min(dv, gross);
+                      return (
+                        <tr key={i}>
+                          <td>
+                            {it.name}
+                            {dv > 0 && (
+                              <div className="item-disc">
+                                Desc. {it.discount_type === 'percentage' ? `${dv}%` : BRL(disc)}
+                              </div>
+                            )}
+                          </td>
+                          <td className="center">{it.qty}</td>
+                          <td className="right">{BRL(Number(it.unit_price))}</td>
+                          <td className="right">{dv > 0 ? `- ${BRL(disc)}` : '—'}</td>
+                          <td className="right">{BRL(Number(it.subtotal))}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 <div className="totals">
                   <div className="row"><span>Subtotal</span><span>{BRL(Number(order.subtotal))}</span></div>
-                  {discount > 0 && (
-                    <div className="row" style={{ color: '#059669' }}><span>Desconto</span><span>- {BRL(discount)}</span></div>
-                  )}
                   <div className="row grand"><span>Total</span><span>{BRL(Number(order.total_amount))}</span></div>
                 </div>
               </div>
