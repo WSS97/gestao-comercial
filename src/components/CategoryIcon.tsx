@@ -1,4 +1,4 @@
-import { Smartphone, Headphones, Tag, Cable, BatteryCharging, Speaker, Package } from 'lucide-react';
+import { Smartphone, Headphones, Tag, Cable, BatteryCharging, Speaker, Package, Wrench } from 'lucide-react';
 
 const CATEGORY_MAP: Record<string, { icon: typeof Smartphone; gradient: string }> = {
   Smartphones: { icon: Smartphone, gradient: 'from-brand-blue/40 to-brand-teal/30' },
@@ -6,6 +6,7 @@ const CATEGORY_MAP: Record<string, { icon: typeof Smartphone; gradient: string }
   Acessórios: { icon: Cable, gradient: 'from-emerald-400/30 to-brand-teal/30' },
   Carregadores: { icon: BatteryCharging, gradient: 'from-amber-400/30 to-brand-teal/30' },
   Caixas: { icon: Speaker, gradient: 'from-rose-400/30 to-brand-teal/30' },
+  Serviço: { icon: Wrench, gradient: 'from-brand-teal/40 to-brand-blue/30' },
 };
 
 export const CATEGORIES = Object.keys(CATEGORY_MAP);

@@ -5,6 +5,7 @@ import Navbar, { type Route } from '@/components/Navbar';
 import PDVScreen from '@/components/PDVScreen';
 import EstoqueScreen from '@/components/EstoqueScreen';
 import DashboardScreen from '@/components/DashboardScreen';
+import WorkOrdersScreen from '@/components/WorkOrdersScreen';
 import { isDeviceAuthorized, clearDeviceToken } from '@/lib/auth';
 
 function AppInner() {
@@ -31,6 +32,7 @@ function AppInner() {
       <main>
         {route === 'pdv' && <PDVScreen />}
         {route === 'estoque' && <EstoqueScreen />}
+        {route === 'os' && <WorkOrdersScreen />}
         {route === 'dashboard' && <DashboardScreen />}
       </main>
     </div>

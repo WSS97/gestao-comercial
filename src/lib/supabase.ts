@@ -17,6 +17,11 @@ export type AuthorizedDevice = {
   access_code: string;
   is_active: boolean;
   created_at: string;
+  company_cnpj?: string | null;
+  company_phone?: string | null;
+  company_email?: string | null;
+  company_address?: string | null;
+  company_logo_url?: string | null;
 };
 
 export type Product = {
@@ -34,6 +39,7 @@ export type Sale = {
   subtotal: number;
   discount_type: string;
   discount_value: number;
+  additional_amount?: number | null;
   total_amount: number;
   payment_method: string;
   notes: string | null;
@@ -53,3 +59,30 @@ export type SaleItem = {
 };
 
 export type PaymentMethod = 'PIX' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'DINHEIRO';
+
+export type WorkOrderItem = {
+  name: string;
+  qty: number;
+  unit_price: number;
+  subtotal: number;
+};
+
+export type WorkOrder = {
+  id: string;
+  device_id: string | null;
+  order_number: number;
+  customer_name: string;
+  customer_phone: string | null;
+  customer_document: string | null;
+  equipment_model: string | null;
+  equipment_imei: string | null;
+  defect_notes: string | null;
+  items_json: WorkOrderItem[];
+  subtotal: number;
+  discount_type: string;
+  discount_value: number;
+  total_amount: number;
+  warranty_terms: string | null;
+  status: string;
+  created_at: string;
+};

@@ -1,8 +1,8 @@
-import { ShoppingCart, Package, LayoutDashboard, Sun, Moon, LogOut, ShieldCheck } from 'lucide-react';
+import { ShoppingCart, Package, LayoutDashboard, Sun, Moon, LogOut, ShieldCheck, FileText } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { getDeviceInfo, clearDeviceToken } from '@/lib/auth';
 
-export type Route = 'pdv' | 'estoque' | 'dashboard';
+export type Route = 'pdv' | 'estoque' | 'dashboard' | 'os';
 
 type NavbarProps = {
   route: Route;
@@ -13,6 +13,7 @@ type NavbarProps = {
 const NAV_ITEMS: { id: Route; label: string; icon: typeof ShoppingCart }[] = [
   { id: 'pdv', label: 'PDV / Caixa', icon: ShoppingCart },
   { id: 'estoque', label: 'Estoque', icon: Package },
+  { id: 'os', label: 'OS / Documentos', icon: FileText },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
 ];
 

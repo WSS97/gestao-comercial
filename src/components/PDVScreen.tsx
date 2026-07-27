@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Search, Plus, Minus, Trash2, ShoppingCart, Tag, CreditCard,
-  Banknote, QrCode, Wallet, Loader2, CheckCircle2, X, Receipt, Percent, StickyNote,
+  Banknote, QrCode, Wallet, Loader2, CheckCircle2, X, Receipt, Percent, StickyNote, PlusCircle,
 } from 'lucide-react';
 import { supabase, type Product, type PaymentMethod, type SaleItem, type Sale } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
@@ -30,6 +30,7 @@ export default function PDVScreen() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discountType, setDiscountType] = useState<'fixed' | 'percentage'>('fixed');
   const [discountValue, setDiscountValue] = useState<string>('');
+  const [additionalAmount, setAdditionalAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -83,7 +84,12 @@ export default function PDVScreen() {
     return Math.min(raw, subtotal);
   }, [discountValue, discountType, subtotal]);
 
-  const total = Math.max(subtotal - discount, 0);
+  const additional = useMemo(
+    () => Math.max(parseFloat(additionalAmount.replace(',', '.')) || 0, 0),
+    [additionalAmount]
+  );
+
+  const total = Math.max(subtotal - discount + additional, 0);
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -119,6 +125,7 @@ export default function PDVScreen() {
   const clearCart = () => {
     setCart([]);
     setDiscountValue('');
+    setAdditionalAmount('');
     setNotes('');
     setLastSale(null);
   };
@@ -137,6 +144,7 @@ export default function PDVScreen() {
           subtotal,
           discount_type: discountType,
           discount_value: discount,
+          additional_amount: additional,
           total_amount: total,
           payment_method: paymentMethod,
           notes: notes.trim() || null,
@@ -170,10 +178,9 @@ export default function PDVScreen() {
 
       setLastSale({ id: sale.id, total: sale.total_amount });
 
-      // fetch full sale + items for the receipt
       const { data: fullSale } = await supabase
         .from('sales')
-        .select('id, device_id, subtotal, discount_type, discount_value, total_amount, payment_method, notes, status, created_at')
+        .select('id, device_id, subtotal, discount_type, discount_value, additional_amount, total_amount, payment_method, notes, status, created_at')
         .eq('id', sale.id)
         .maybeSingle();
       const { data: saleItems } = await supabase
@@ -190,6 +197,7 @@ export default function PDVScreen() {
 
       setCart([]);
       setDiscountValue('');
+      setAdditionalAmount('');
       setNotes('');
       fetchProducts();
     } catch {
@@ -370,28 +378,47 @@ export default function PDVScreen() {
             />
           </div>
 
-          {/* Discount */}
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
-              <button
-                onClick={() => setDiscountType('fixed')}
-                className={`px-2.5 py-1.5 text-xs font-medium ${discountType === 'fixed' ? 'bg-brand-teal text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
-              >
-                <Tag className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setDiscountType('percentage')}
-                className={`px-2.5 py-1.5 text-xs font-medium ${discountType === 'percentage' ? 'bg-brand-teal text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
-              >
-                <Percent className="w-3.5 h-3.5" />
-              </button>
+          {/* Additional fee + Discount */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                <PlusCircle className="w-3 h-3" /> Taxa / Valor adicional
+              </label>
+              <input
+                value={additionalAmount}
+                onChange={(e) => setAdditionalAmount(e.target.value)}
+                placeholder="0,00"
+                inputMode="decimal"
+                className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
+              />
             </div>
-            <input
-              value={discountValue}
-              onChange={(e) => setDiscountValue(e.target.value)}
-              placeholder={discountType === 'fixed' ? 'Desconto R$' : 'Desconto %'}
-              className="flex-1 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
-            />
+            <div>
+              <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                <Tag className="w-3 h-3" /> Desconto
+              </label>
+              <div className="flex gap-1">
+                <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+                  <button
+                    onClick={() => setDiscountType('fixed')}
+                    className={`px-2 py-1.5 text-xs font-medium ${discountType === 'fixed' ? 'bg-brand-teal text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
+                  >
+                    <Tag className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setDiscountType('percentage')}
+                    className={`px-2 py-1.5 text-xs font-medium ${discountType === 'percentage' ? 'bg-brand-teal text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
+                  >
+                    <Percent className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <input
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
+                  placeholder={discountType === 'fixed' ? 'R$' : '%'}
+                  className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Totals */}
@@ -404,6 +431,12 @@ export default function PDVScreen() {
               <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
                 <span>Desconto</span>
                 <span>- {BRL(discount)}</span>
+              </div>
+            )}
+            {additional > 0 && (
+              <div className="flex justify-between text-amber-600 dark:text-amber-400">
+                <span>Taxa adicional</span>
+                <span>+ {BRL(additional)}</span>
               </div>
             )}
             <div className="flex justify-between items-center pt-1.5 border-t border-slate-200 dark:border-slate-700">
@@ -444,13 +477,7 @@ export default function PDVScreen() {
           )}
 
           {lastSale && (
-            <button
-              onClick={() => {
-                if (receipt) return;
-                // re-open receipt if available
-              }}
-              className="w-full flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 animate-fadeIn text-left"
-            >
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 animate-fadeIn">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" strokeWidth={2} />
               <p className="text-xs text-emerald-700 dark:text-emerald-300 flex-1">
                 Venda #{lastSale.id.slice(0, 8)} concluída — {BRL(lastSale.total)}
@@ -460,7 +487,7 @@ export default function PDVScreen() {
                   <Receipt className="w-3.5 h-3.5" /> Cupom aberto
                 </span>
               )}
-            </button>
+            </div>
           )}
 
           <button

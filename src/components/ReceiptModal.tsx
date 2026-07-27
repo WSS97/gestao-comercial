@@ -112,7 +112,13 @@ export default function ReceiptModal({
             {Number(sale.discount_value) > 0 && (
               <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
                 <span>Desconto ({sale.discount_type === 'percentage' ? '%' : 'R$'})</span>
-                <span>- {BRL(sale.discount_value)}</span>
+                <span>- {BRL(Number(sale.discount_value))}</span>
+              </div>
+            )}
+            {Number(sale.additional_amount ?? 0) > 0 && (
+              <div className="flex justify-between text-amber-600 dark:text-amber-400">
+                <span>Taxa adicional</span>
+                <span>+ {BRL(Number(sale.additional_amount))}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-sm pt-1">
