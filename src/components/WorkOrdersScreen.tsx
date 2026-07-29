@@ -42,6 +42,8 @@ type FormState = {
   defect_notes: string;
   warranty_terms: string;
   items: WorkOrderItem[];
+  total_discount_type: 'fixed' | 'percentage';
+  total_discount_value: string;
   status: string;
 };
 
@@ -54,6 +56,8 @@ const EMPTY_FORM: FormState = {
   defect_notes: '',
   warranty_terms: DEFAULT_WARRANTY,
   items: [{ name: '', qty: 1, unit_price: 0, discount_type: 'fixed', discount_value: 0, subtotal: 0 }],
+  total_discount_type: 'fixed',
+  total_discount_value: '',
   status: 'CONCLUIDO',
 };
 
@@ -95,7 +99,14 @@ export default function WorkOrdersScreen() {
   }, [fetchOrders]);
 
   const itemsSubtotal = form.items.reduce((s, i) => s + itemSubtotal(i), 0);
-  const total = itemsSubtotal;
+  const totalDiscount = (() => {
+    const raw = parseFloat(form.total_discount_value.replace(',', '.')) || 0;
+    if (form.total_discount_type === 'percentage') {
+      return Math.min(itemsSubtotal * (raw / 100), itemsSubtotal);
+    }
+    return Math.min(raw, itemsSubtotal);
+  })();
+  const total = Math.max(itemsSubtotal - totalDiscount, 0);
 
   const updateItem = (idx: number, patch: Partial<WorkOrderItem>) => {
     setForm((f) => ({
@@ -154,6 +165,14 @@ export default function WorkOrdersScreen() {
       subtotal: itemSubtotal(i),
     }));
     const cleanSubtotal = cleanItems.reduce((s, i) => s + i.subtotal, 0);
+    const cleanTotalDiscount = (() => {
+      const raw = parseFloat(form.total_discount_value.replace(',', '.')) || 0;
+      if (form.total_discount_type === 'percentage') {
+        return Math.min(cleanSubtotal * (raw / 100), cleanSubtotal);
+      }
+      return Math.min(raw, cleanSubtotal);
+    })();
+    const cleanTotal = Math.max(cleanSubtotal - cleanTotalDiscount, 0);
 
     const payload = {
       device_id: device?.id ?? null,
@@ -165,9 +184,9 @@ export default function WorkOrdersScreen() {
       defect_notes: form.defect_notes.trim() || null,
       items_json: cleanItems,
       subtotal: cleanSubtotal,
-      discount_type: 'fixed',
-      discount_value: 0,
-      total_amount: cleanSubtotal,
+      discount_type: form.total_discount_type,
+      discount_value: cleanTotalDiscount,
+      total_amount: cleanTotal,
       warranty_terms: form.warranty_terms.trim() || null,
       status: form.status,
     };
@@ -307,6 +326,7 @@ export default function WorkOrdersScreen() {
           signature={signature}
           setSignature={setSignature}
           itemsSubtotal={itemsSubtotal}
+          totalDiscount={totalDiscount}
           total={total}
           updateItem={updateItem}
           addItem={addItem}
@@ -330,7 +350,7 @@ export default function WorkOrdersScreen() {
 
 function WorkOrderForm({
   form, setForm, signature, setSignature,
-  itemsSubtotal, total,
+  itemsSubtotal, totalDiscount, total,
   updateItem, addItem, removeItem,
   onSubmit, onClose, saving, error,
 }: {
@@ -339,6 +359,7 @@ function WorkOrderForm({
   signature: string | null;
   setSignature: (s: string | null) => void;
   itemsSubtotal: number;
+  totalDiscount: number;
   total: number;
   updateItem: (idx: number, patch: Partial<WorkOrderItem>) => void;
   addItem: () => void;
@@ -348,6 +369,14 @@ function WorkOrderForm({
   saving: boolean;
   error: string;
 }) {
+  const totalDiscountOpen = form.total_discount_value !== '';
+  const toggleTotalDiscount = () => {
+    setForm((f) => ({
+      ...f,
+      total_discount_value: f.total_discount_value === '' ? '0' : '',
+    }));
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
       <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
@@ -452,8 +481,55 @@ function WorkOrderForm({
             {/* Totals */}
             <div className="mt-3 text-sm space-y-1">
               <div className="flex justify-between text-slate-500 dark:text-slate-400">
-                <span>Subtotal</span><span>{BRL(itemsSubtotal)}</span>
+                <span>Subtotal dos itens</span><span>{BRL(itemsSubtotal)}</span>
               </div>
+
+              {/* Total discount */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={toggleTotalDiscount}
+                  className={`flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md transition-colors ${
+                    totalDiscountOpen
+                      ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
+                      : 'text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light'
+                  }`}
+                >
+                  <Shield className="w-3 h-3" />
+                  {totalDiscountOpen ? 'Desconto sobre o total ativo' : 'Aplicar desconto sobre o total'}
+                </button>
+                {totalDiscountOpen && (
+                  <div className="flex items-center gap-1 ml-auto">
+                    <div className="flex rounded-md overflow-hidden border border-slate-200 dark:border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, total_discount_type: 'fixed' }))}
+                        className={`px-1.5 py-1 text-[11px] ${form.total_discount_type === 'fixed' ? 'bg-brand-teal text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
+                      >R$</button>
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, total_discount_type: 'percentage' }))}
+                        className={`px-1.5 py-1 text-[11px] ${form.total_discount_type === 'percentage' ? 'bg-brand-teal text-white' : 'bg-white dark:bg-slate-800 text-slate-500'}`}
+                      >%</button>
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={form.total_discount_value}
+                      onChange={(e) => setForm((f) => ({ ...f, total_discount_value: e.target.value }))}
+                      placeholder="0,00"
+                      className="w-20 px-2 py-1 rounded-md bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {totalDiscount > 0 && (
+                <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                  <span>Desconto sobre o total</span><span>- {BRL(totalDiscount)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-slate-900 dark:text-white pt-1 border-t border-slate-200 dark:border-slate-700">
                 <span>Total</span><span>{BRL(total)}</span>
               </div>
@@ -542,6 +618,7 @@ function ItemRow({
   const [products, setProducts] = useState<Product[]>([]);
   const [showSuggest, setShowSuggest] = useState(false);
   const [query, setQuery] = useState(item.name);
+  const [discountOpen, setDiscountOpen] = useState((Number(item.discount_value) || 0) > 0);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -589,8 +666,6 @@ function ItemRow({
     setQuery(p.name);
     setShowSuggest(false);
   };
-
-  const hasDiscount = (Number(item.discount_value) || 0) > 0;
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-2.5 space-y-2 bg-slate-50/50 dark:bg-slate-800/20">
@@ -663,18 +738,22 @@ function ItemRow({
       <div className="flex items-center gap-2 pl-1">
         <button
           type="button"
-          onClick={() => updateItem(idx, { discount_value: hasDiscount ? 0 : undefined })}
+          onClick={() => {
+            const next = !discountOpen;
+            setDiscountOpen(next);
+            if (!next) updateItem(idx, { discount_value: 0 });
+          }}
           className={`flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md transition-colors ${
-            hasDiscount
+            discountOpen
               ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
               : 'text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light'
           }`}
         >
           <Shield className="w-3 h-3" />
-          {hasDiscount ? 'Desconto ativo' : 'Aplicar desconto'}
+          {discountOpen ? 'Desconto do item ativo' : 'Aplicar desconto no item'}
         </button>
-        {hasDiscount && (
-          <div className="flex items-center gap-1">
+        {discountOpen && (
+          <div className="flex items-center gap-1 ml-auto">
             <div className="flex rounded-md overflow-hidden border border-slate-200 dark:border-slate-700">
               <button
                 type="button"
@@ -693,7 +772,8 @@ function ItemRow({
               step="0.01"
               value={item.discount_value ?? 0}
               onChange={(e) => updateItem(idx, { discount_value: Number(e.target.value) })}
-              className="w-20 px-2 py-1 rounded-md bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-brand-teal"
+              placeholder="0,00"
+              className="w-20 px-2 py-1 rounded-md bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
             />
           </div>
         )}
@@ -970,6 +1050,12 @@ function PrintPreview({
                 </table>
                 <div className="totals">
                   <div className="row"><span>Subtotal</span><span>{BRL(Number(order.subtotal))}</span></div>
+                  {Number(order.discount_value) > 0 && (
+                    <div className="row" style={{ color: '#059669' }}>
+                      <span>Desconto sobre total ({order.discount_type === 'percentage' ? '%' : 'R$'})</span>
+                      <span>- {BRL(Number(order.discount_value))}</span>
+                    </div>
+                  )}
                   <div className="row grand"><span>Total</span><span>{BRL(Number(order.total_amount))}</span></div>
                 </div>
               </div>
