@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Wrench, Plus, Trash2, Printer, Loader2, X, Check, FileText,
-  User, Smartphone, Shield, Search, Ban, Eye, Package,
+  User, Smartphone, Shield, Search, Ban, Eye, Package, Pencil, AlertTriangle,
 } from 'lucide-react';
 import {
   supabase, type WorkOrder, type WorkOrderItem, type AuthorizedDevice, type Product,
@@ -81,6 +81,9 @@ export default function WorkOrdersScreen() {
   const [search, setSearch] = useState('');
   const [printOrder, setPrintOrder] = useState<WorkOrder | null>(null);
   const [company, setCompany] = useState<AuthorizedDevice | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteOrder, setDeleteOrder] = useState<WorkOrder | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -140,7 +143,66 @@ export default function WorkOrdersScreen() {
 
   const openNewForm = () => {
     resetForm();
+    setEditingId(null);
     setShowForm(true);
+  };
+
+  const openEditForm = (order: WorkOrder) => {
+    const items = (order.items_json ?? []) as WorkOrderItem[];
+    const mappedItems = items.length > 0 ? items.map((i) => ({
+      name: i.name,
+      qty: Number(i.qty) || 1,
+      unit_price: Number(i.unit_price) || 0,
+      discount_type: i.discount_type ?? 'fixed',
+      discount_value: Number(i.discount_value) || 0,
+      subtotal: itemSubtotal({
+        name: i.name,
+        qty: Number(i.qty) || 1,
+        unit_price: Number(i.unit_price) || 0,
+        discount_type: i.discount_type ?? 'fixed',
+        discount_value: Number(i.discount_value) || 0,
+        subtotal: 0,
+      }),
+    })) : [{ name: '', qty: 1, unit_price: 0, discount_type: 'fixed', discount_value: 0, subtotal: 0 }];
+
+    const hasTotalDiscount = Number(order.discount_value) > 0;
+    let totalDiscountDisplay = '';
+    if (hasTotalDiscount) {
+      if (order.discount_type === 'percentage') {
+        const sub = Number(order.subtotal) || 0;
+        const pct = sub > 0 ? (Number(order.discount_value) / sub) * 100 : 0;
+        totalDiscountDisplay = String(Math.round(pct * 100) / 100);
+      } else {
+        totalDiscountDisplay = String(Number(order.discount_value));
+      }
+    }
+
+    setForm({
+      customer_name: order.customer_name ?? '',
+      customer_phone: order.customer_phone ?? '',
+      customer_document: order.customer_document ?? '',
+      equipment_model: order.equipment_model ?? '',
+      equipment_imei: order.equipment_imei ?? '',
+      defect_notes: order.defect_notes ?? '',
+      warranty_terms: order.warranty_terms ?? DEFAULT_WARRANTY,
+      items: mappedItems,
+      total_discount_type: (order.discount_type as 'fixed' | 'percentage') ?? 'fixed',
+      total_discount_value: totalDiscountDisplay,
+      status: order.status ?? 'CONCLUIDO',
+    });
+    setSignature(null);
+    setError('');
+    setEditingId(order.id);
+    setShowForm(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteOrder) return;
+    setDeleting(true);
+    await supabase.from('work_orders').delete().eq('id', deleteOrder.id);
+    setDeleting(false);
+    setDeleteOrder(null);
+    fetchOrders();
   };
 
   const handleSubmit = async () => {
@@ -191,13 +253,21 @@ export default function WorkOrdersScreen() {
       status: form.status,
     };
 
-    const { error: insError } = await supabase.from('work_orders').insert(payload);
+    let insError: { message: string } | null = null;
+    if (editingId) {
+      const res = await supabase.from('work_orders').update(payload).eq('id', editingId);
+      insError = res.error ? { message: res.error.message } : null;
+    } else {
+      const res = await supabase.from('work_orders').insert(payload);
+      insError = res.error ? { message: res.error.message } : null;
+    }
     setSaving(false);
     if (insError) {
       setError('Não foi possível salvar a ordem de serviço.');
       return;
     }
     setShowForm(false);
+    setEditingId(null);
     resetForm();
     fetchOrders();
   };
@@ -308,6 +378,20 @@ export default function WorkOrdersScreen() {
                         >
                           <Eye className="w-4 h-4" strokeWidth={2} />
                         </button>
+                        <button
+                          onClick={() => openEditForm(o)}
+                          title="Editar"
+                          className="w-7 h-7 rounded-lg text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 flex items-center justify-center transition-colors"
+                        >
+                          <Pencil className="w-4 h-4" strokeWidth={2} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteOrder(o)}
+                          title="Excluir"
+                          className="w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center justify-center transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" strokeWidth={2} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -332,10 +416,49 @@ export default function WorkOrdersScreen() {
           addItem={addItem}
           removeItem={removeItem}
           onSubmit={handleSubmit}
-          onClose={() => setShowForm(false)}
+          onClose={() => { setShowForm(false); setEditingId(null); }}
           saving={saving}
           error={error}
+          editingId={editingId}
         />
+      )}
+
+      {/* Delete confirmation */}
+      {deleteOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-950/40 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-500" strokeWidth={2} />
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-900 dark:text-white">Excluir ordem de serviço?</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Esta ação não pode ser desfeita.</p>
+              </div>
+            </div>
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-800/40 p-3 mb-4 text-sm text-slate-600 dark:text-slate-300">
+              <p className="font-medium text-slate-900 dark:text-white">OS #{String(deleteOrder.order_number).padStart(4, '0')} — {deleteOrder.customer_name}</p>
+              {deleteOrder.equipment_model && <p className="text-xs text-slate-400 mt-0.5">{deleteOrder.equipment_model}</p>}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteOrder(null)}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-red-500 text-white font-medium text-sm shadow-sm hover:bg-red-600 disabled:opacity-60 transition-all active:scale-[0.98]"
+              >
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2.5} /> : <Trash2 className="w-4 h-4" strokeWidth={2.5} />}
+                {deleting ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Print preview */}
@@ -352,7 +475,7 @@ function WorkOrderForm({
   form, setForm, signature, setSignature,
   itemsSubtotal, totalDiscount, total,
   updateItem, addItem, removeItem,
-  onSubmit, onClose, saving, error,
+  onSubmit, onClose, saving, error, editingId,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
@@ -368,6 +491,7 @@ function WorkOrderForm({
   onClose: () => void;
   saving: boolean;
   error: string;
+  editingId: string | null;
 }) {
   const totalDiscountOpen = form.total_discount_value !== '';
   const toggleTotalDiscount = () => {
@@ -386,7 +510,7 @@ function WorkOrderForm({
             <div className="w-9 h-9 rounded-lg bg-brand-teal/10 flex items-center justify-center">
               <Wrench className="w-5 h-5 text-brand-teal-dark dark:text-brand-teal-light" strokeWidth={2} />
             </div>
-            <h3 className="font-semibold text-slate-900 dark:text-white">Nova Ordem de Serviço</h3>
+            <h3 className="font-semibold text-slate-900 dark:text-white">{editingId ? 'Editar Ordem de Serviço' : 'Nova Ordem de Serviço'}</h3>
           </div>
           <button
             onClick={onClose}
@@ -594,7 +718,7 @@ function WorkOrderForm({
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-brand-teal text-white font-medium text-sm shadow-sm hover:bg-brand-teal-dark disabled:opacity-60 transition-all active:scale-[0.98]"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2.5} /> : <Check className="w-4 h-4" strokeWidth={2.5} />}
-            {saving ? 'Salvando...' : 'Salvar OS'}
+            {saving ? 'Salvando...' : editingId ? 'Salvar Alterações' : 'Salvar OS'}
           </button>
         </div>
       </div>
