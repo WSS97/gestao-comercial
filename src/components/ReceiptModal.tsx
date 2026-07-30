@@ -1,5 +1,5 @@
 import { Printer, X, ShieldCheck } from 'lucide-react';
-import type { Sale, SaleItem } from '@/lib/supabase';
+import type { Sale, SaleItem, AuthorizedDevice } from '@/lib/supabase';
 
 const BRL = (v: number) =>
   Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -14,7 +14,7 @@ const PAYMENT_LABELS: Record<string, string> = {
 export type ReceiptData = {
   sale: Sale;
   items: SaleItem[];
-  deviceName?: string | null;
+  device?: AuthorizedDevice | null;
 };
 
 export default function ReceiptModal({
@@ -24,8 +24,9 @@ export default function ReceiptModal({
   data: ReceiptData;
   onClose: () => void;
 }) {
-  const { sale, items, deviceName } = data;
+  const { sale, items, device } = data;
   const cancelled = sale.status === 'CANCELLED';
+  const companyName = device?.device_name ?? 'N/A';
 
   const handlePrint = () => {
     const printContents = document.getElementById('receipt-print-area')?.innerHTML ?? '';
@@ -55,6 +56,10 @@ export default function ReceiptModal({
     }, 250);
   };
 
+  const hasCustomer =
+    sale.customer_name || sale.customer_phone || sale.customer_document ||
+    sale.customer_email || sale.customer_address;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
       <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
@@ -76,10 +81,22 @@ export default function ReceiptModal({
 
         {/* Printable receipt */}
         <div id="receipt-print-area" className="p-5 font-mono text-sm text-slate-900 dark:text-slate-100">
+          {/* Company header */}
           <div className="text-center mb-3">
-            <p className="font-bold text-base">CELULAR TECH</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Dispositivo: {deviceName ?? 'N/A'}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="font-bold text-base">{companyName}</p>
+            {device?.company_cnpj && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">CNPJ: {device.company_cnpj}</p>
+            )}
+            {device?.company_address && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">{device.company_address}</p>
+            )}
+            {device?.company_phone && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">Tel: {device.company_phone}</p>
+            )}
+            {device?.company_email && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">{device.company_email}</p>
+            )}
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               {new Date(sale.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">Cupom: #{sale.id.slice(0, 8)}</p>
@@ -87,6 +104,21 @@ export default function ReceiptModal({
               <p className="cancelled text-xs font-bold mt-1">*** VENDA CANCELADA ***</p>
             )}
           </div>
+
+          {/* Customer block */}
+          {hasCustomer && (
+            <>
+              <div className="border-t border-dashed border-slate-300 dark:border-slate-600 my-3" />
+              <div className="text-xs space-y-0.5 mb-1">
+                <p className="font-bold mb-1">Cliente</p>
+                {sale.customer_name && <p>{sale.customer_name}</p>}
+                {sale.customer_document && <p>CPF/CNPJ: {sale.customer_document}</p>}
+                {sale.customer_phone && <p>Tel: {sale.customer_phone}</p>}
+                {sale.customer_email && <p>{sale.customer_email}</p>}
+                {sale.customer_address && <p>{sale.customer_address}</p>}
+              </div>
+            </>
+          )}
 
           <div className="border-t border-dashed border-slate-300 dark:border-slate-600 my-3" />
 
@@ -146,7 +178,7 @@ export default function ReceiptModal({
           <p className="text-center text-xs text-slate-500 dark:text-slate-400">
             Obrigado pela preferência!
           </p>
-          <p className="text-center text-[10px] text-slate-400 mt-1">Celular Tech © 2026</p>
+          <p className="text-center text-[10px] text-slate-400 mt-1">{companyName} © 2026</p>
         </div>
 
         {/* Actions */}

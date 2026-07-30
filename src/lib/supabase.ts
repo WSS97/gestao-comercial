@@ -30,6 +30,7 @@ export type Product = {
   price: number;
   stock: number;
   category: string;
+  device_id?: string | null;
   created_at: string;
 };
 
@@ -44,6 +45,11 @@ export type Sale = {
   payment_method: string;
   notes: string | null;
   status: string;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  customer_document?: string | null;
+  customer_email?: string | null;
+  customer_address?: string | null;
   created_at: string;
 };
 
@@ -76,6 +82,9 @@ export type WorkOrder = {
   customer_name: string;
   customer_phone: string | null;
   customer_document: string | null;
+  customer_address?: string | null;
+  customer_email?: string | null;
+  customer_rg?: string | null;
   equipment_model: string | null;
   equipment_imei: string | null;
   defect_notes: string | null;
@@ -86,5 +95,7 @@ export type WorkOrder = {
   total_amount: number;
   warranty_terms: string | null;
   status: string;
+  order_date?: string | null;
+  delivery_date?: string | null;
   created_at: string;
 };

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Search, Plus, Minus, Trash2, ShoppingCart, Tag, CreditCard,
   Banknote, QrCode, Wallet, Loader2, CheckCircle2, X, Receipt, Percent, StickyNote, PlusCircle,
+  User, Mail, MapPin, Phone as PhoneIcon,
 } from 'lucide-react';
 import { supabase, type Product, type PaymentMethod, type SaleItem, type Sale } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
@@ -33,6 +34,11 @@ export default function PDVScreen() {
   const [additionalAmount, setAdditionalAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX');
   const [notes, setNotes] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerDocument, setCustomerDocument] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [lastSale, setLastSale] = useState<{ id: string; total: number } | null>(null);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
@@ -40,10 +46,15 @@ export default function PDVScreen() {
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const device = getDeviceInfo();
+    let query = supabase
       .from('products')
-      .select('id, name, price, stock, category, created_at')
+      .select('id, name, price, stock, category, device_id, created_at')
       .order('name');
+    if (device?.id) {
+      query = query.or(`device_id.eq.${device.id},device_id.is.null`);
+    }
+    const { data, error } = await query;
     if (error) {
       setError('Não foi possível carregar os produtos.');
       setProducts([]);
@@ -127,6 +138,11 @@ export default function PDVScreen() {
     setDiscountValue('');
     setAdditionalAmount('');
     setNotes('');
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerDocument('');
+    setCustomerEmail('');
+    setCustomerAddress('');
     setLastSale(null);
   };
 
@@ -149,6 +165,11 @@ export default function PDVScreen() {
           payment_method: paymentMethod,
           notes: notes.trim() || null,
           status: 'COMPLETED',
+          customer_name: customerName.trim() || null,
+          customer_phone: customerPhone.trim() || null,
+          customer_document: customerDocument.trim() || null,
+          customer_email: customerEmail.trim() || null,
+          customer_address: customerAddress.trim() || null,
         })
         .select('id, total_amount')
         .single();
@@ -180,7 +201,7 @@ export default function PDVScreen() {
 
       const { data: fullSale } = await supabase
         .from('sales')
-        .select('id, device_id, subtotal, discount_type, discount_value, additional_amount, total_amount, payment_method, notes, status, created_at')
+        .select('id, device_id, subtotal, discount_type, discount_value, additional_amount, total_amount, payment_method, notes, status, customer_name, customer_phone, customer_document, customer_email, customer_address, created_at')
         .eq('id', sale.id)
         .maybeSingle();
       const { data: saleItems } = await supabase
@@ -191,7 +212,7 @@ export default function PDVScreen() {
         setReceipt({
           sale: fullSale as Sale,
           items: saleItems as SaleItem[],
-          deviceName: getDeviceInfo()?.device_name ?? null,
+          device: getDeviceInfo() ?? null,
         });
       }
 
@@ -199,6 +220,11 @@ export default function PDVScreen() {
       setDiscountValue('');
       setAdditionalAmount('');
       setNotes('');
+      setCustomerName('');
+      setCustomerPhone('');
+      setCustomerDocument('');
+      setCustomerEmail('');
+      setCustomerAddress('');
       fetchProducts();
     } catch {
       setError('Falha ao registrar a venda. Tente novamente.');
@@ -363,6 +389,61 @@ export default function PDVScreen() {
 
         {/* Summary + checkout */}
         <div className="border-t border-slate-200 dark:border-slate-800 p-4 space-y-3 bg-slate-50/50 dark:bg-slate-900/40">
+          {/* Customer info */}
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-3 space-y-2">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <User className="w-3.5 h-3.5" /> Dados do Cliente
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="col-span-2">
+                <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Nome</label>
+                <input
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Nome do cliente"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Telefone</label>
+                <input
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="(00) 0000-0000"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-slate-400 mb-0.5">CPF / CNPJ</label>
+                <input
+                  value={customerDocument}
+                  onChange={(e) => setCustomerDocument(e.target.value)}
+                  placeholder="000.000.000-00"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[10px] font-medium text-slate-400 mb-0.5">E-mail</label>
+                <input
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                  placeholder="cliente@email.com"
+                  inputMode="email"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Endereço</label>
+                <input
+                  value={customerAddress}
+                  onChange={(e) => setCustomerAddress(e.target.value)}
+                  placeholder="Rua, número, bairro, cidade..."
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Notes */}
           <div>
             <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">

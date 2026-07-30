@@ -3,6 +3,7 @@ import {
   Search, Package, Plus, Loader2, AlertTriangle, Edit3, X, Check, AlertCircle,
 } from 'lucide-react';
 import { supabase, type Product } from '@/lib/supabase';
+import { getDeviceInfo } from '@/lib/auth';
 import { CategoryIcon, CATEGORIES } from '@/components/CategoryIcon';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -19,10 +20,15 @@ export default function EstoqueScreen() {
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    const device = getDeviceInfo();
+    let query = supabase
       .from('products')
-      .select('id, name, price, stock, category, created_at')
+      .select('id, name, price, stock, category, device_id, created_at')
       .order('name');
+    if (device?.id) {
+      query = query.or(`device_id.eq.${device.id},device_id.is.null`);
+    }
+    const { data } = await query;
     setProducts((data as Product[]) ?? []);
     setLoading(false);
   }, []);
@@ -254,9 +260,10 @@ function AddProductModal({
 
     setSaving(true);
     setError('');
+    const device = getDeviceInfo();
     const { error: insertError } = await supabase
       .from('products')
-      .insert({ name: trimmedName, price: numPrice, stock: numStock, category });
+      .insert({ name: trimmedName, price: numPrice, stock: numStock, category, device_id: device?.id ?? null });
     setSaving(false);
 
     if (insertError) {

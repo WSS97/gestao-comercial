@@ -33,10 +33,15 @@ const DEFAULT_WARRANTY = `1. Prazo de Garantia: 90 dias a contar desta data (ou 
 - Tentativa de desbloqueio, "root" ou manutenção por terceiros;
 - Qualquer dano causado por mau uso em geral.`;
 
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
 type FormState = {
   customer_name: string;
   customer_phone: string;
   customer_document: string;
+  customer_address: string;
+  customer_email: string;
+  customer_rg: string;
   equipment_model: string;
   equipment_imei: string;
   defect_notes: string;
@@ -44,6 +49,8 @@ type FormState = {
   items: WorkOrderItem[];
   total_discount_type: 'fixed' | 'percentage';
   total_discount_value: string;
+  order_date: string;
+  delivery_date: string;
   status: string;
 };
 
@@ -51,6 +58,9 @@ const EMPTY_FORM: FormState = {
   customer_name: '',
   customer_phone: '',
   customer_document: '',
+  customer_address: '',
+  customer_email: '',
+  customer_rg: '',
   equipment_model: '',
   equipment_imei: '',
   defect_notes: '',
@@ -58,6 +68,8 @@ const EMPTY_FORM: FormState = {
   items: [{ name: '', qty: 1, unit_price: 0, discount_type: 'fixed', discount_value: 0, subtotal: 0 }],
   total_discount_type: 'fixed',
   total_discount_value: '',
+  order_date: todayISO(),
+  delivery_date: '',
   status: 'CONCLUIDO',
 };
 
@@ -69,6 +81,12 @@ function itemSubtotal(it: WorkOrderItem): number {
   }
   return Math.max(gross - Math.min(dv, gross), 0);
 }
+
+const fmtDate = (s?: string | null): string => {
+  if (!s) return '—';
+  const d = new Date(s + (s.length <= 10 ? 'T00:00:00' : ''));
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
 
 export default function WorkOrdersScreen() {
   const [orders, setOrders] = useState<WorkOrder[]>([]);
@@ -89,7 +107,7 @@ export default function WorkOrdersScreen() {
     setLoading(true);
     const { data } = await supabase
       .from('work_orders')
-      .select('id, device_id, order_number, customer_name, customer_phone, customer_document, equipment_model, equipment_imei, defect_notes, items_json, subtotal, discount_type, discount_value, total_amount, warranty_terms, status, created_at')
+      .select('id, device_id, order_number, customer_name, customer_phone, customer_document, customer_address, customer_email, customer_rg, equipment_model, equipment_imei, defect_notes, items_json, subtotal, discount_type, discount_value, total_amount, warranty_terms, status, order_date, delivery_date, created_at')
       .order('created_at', { ascending: false })
       .limit(200);
     setOrders((data as WorkOrder[]) ?? []);
@@ -136,7 +154,7 @@ export default function WorkOrdersScreen() {
     }));
 
   const resetForm = () => {
-    setForm({ ...EMPTY_FORM, warranty_terms: DEFAULT_WARRANTY });
+    setForm({ ...EMPTY_FORM, warranty_terms: DEFAULT_WARRANTY, order_date: todayISO() });
     setSignature(null);
     setError('');
   };
@@ -181,6 +199,9 @@ export default function WorkOrdersScreen() {
       customer_name: order.customer_name ?? '',
       customer_phone: order.customer_phone ?? '',
       customer_document: order.customer_document ?? '',
+      customer_address: order.customer_address ?? '',
+      customer_email: order.customer_email ?? '',
+      customer_rg: order.customer_rg ?? '',
       equipment_model: order.equipment_model ?? '',
       equipment_imei: order.equipment_imei ?? '',
       defect_notes: order.defect_notes ?? '',
@@ -188,6 +209,8 @@ export default function WorkOrdersScreen() {
       items: mappedItems,
       total_discount_type: (order.discount_type as 'fixed' | 'percentage') ?? 'fixed',
       total_discount_value: totalDiscountDisplay,
+      order_date: order.order_date ? order.order_date.slice(0, 10) : todayISO(),
+      delivery_date: order.delivery_date ? order.delivery_date.slice(0, 10) : '',
       status: order.status ?? 'CONCLUIDO',
     });
     setSignature(null);
@@ -241,6 +264,9 @@ export default function WorkOrdersScreen() {
       customer_name: form.customer_name.trim(),
       customer_phone: form.customer_phone.trim() || null,
       customer_document: form.customer_document.trim() || null,
+      customer_address: form.customer_address.trim() || null,
+      customer_email: form.customer_email.trim() || null,
+      customer_rg: form.customer_rg.trim() || null,
       equipment_model: form.equipment_model.trim() || null,
       equipment_imei: form.equipment_imei.trim() || null,
       defect_notes: form.defect_notes.trim() || null,
@@ -250,6 +276,8 @@ export default function WorkOrdersScreen() {
       discount_value: cleanTotalDiscount,
       total_amount: cleanTotal,
       warranty_terms: form.warranty_terms.trim() || null,
+      order_date: form.order_date || null,
+      delivery_date: form.delivery_date || null,
       status: form.status,
     };
 
@@ -367,7 +395,7 @@ export default function WorkOrdersScreen() {
                       {BRL(Number(o.total_amount))}
                     </td>
                     <td className="px-4 py-3 text-right text-xs text-slate-400">
-                      {new Date(o.created_at).toLocaleDateString('pt-BR')}
+                      {fmtDate(o.order_date)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -529,7 +557,7 @@ function WorkOrderForm({
                   value={form.customer_name}
                   onChange={(e) => setForm((f) => ({ ...f, customer_name: e.target.value }))}
                   className={inputCls}
-                  placeholder="Nome do cliente"
+                  placeholder="Nome completo do cliente"
                 />
               </Field>
               <Field label="Telefone">
@@ -540,12 +568,58 @@ function WorkOrderForm({
                   placeholder="(00) 00000-0000"
                 />
               </Field>
-              <Field label="CPF / RG">
+              <Field label="CPF / CNPJ">
                 <input
                   value={form.customer_document}
                   onChange={(e) => setForm((f) => ({ ...f, customer_document: e.target.value }))}
                   className={inputCls}
                   placeholder="000.000.000-00"
+                />
+              </Field>
+              <Field label="RG">
+                <input
+                  value={form.customer_rg}
+                  onChange={(e) => setForm((f) => ({ ...f, customer_rg: e.target.value }))}
+                  className={inputCls}
+                  placeholder="00.000.000-0"
+                />
+              </Field>
+              <Field label="E-mail">
+                <input
+                  value={form.customer_email}
+                  onChange={(e) => setForm((f) => ({ ...f, customer_email: e.target.value }))}
+                  className={inputCls}
+                  placeholder="cliente@email.com"
+                />
+              </Field>
+              <Field label="Endereço">
+                <input
+                  value={form.customer_address}
+                  onChange={(e) => setForm((f) => ({ ...f, customer_address: e.target.value }))}
+                  className={inputCls}
+                  placeholder="Rua, número, bairro, cidade"
+                />
+              </Field>
+            </div>
+          </Section>
+
+          {/* Dates */}
+          <Section icon={FileText} title="Datas">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Data do Pedido">
+                <input
+                  type="date"
+                  value={form.order_date}
+                  onChange={(e) => setForm((f) => ({ ...f, order_date: e.target.value }))}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Data da Entrega">
+                <input
+                  type="date"
+                  value={form.delivery_date}
+                  onChange={(e) => setForm((f) => ({ ...f, delivery_date: e.target.value }))}
+                  className={inputCls}
                 />
               </Field>
             </div>
@@ -754,19 +828,25 @@ function ItemRow({
     const t = setTimeout(async () => {
       const q = query.trim().toLowerCase();
       let data: Product[] | null = null;
+      const device = getDeviceInfo();
+      const deviceFilter = device?.id ? `device_id.eq.${device.id},device_id.is.null` : undefined;
       if (q) {
-        const res = await supabase
+        let q2 = supabase
           .from('products')
-          .select('id, name, price, stock, category, created_at')
+          .select('id, name, price, stock, category, device_id, created_at')
           .ilike('name', `%${q}%`)
           .limit(6);
+        if (deviceFilter) q2 = q2.or(deviceFilter);
+        const res = await q2;
         data = (res.data as Product[]) ?? [];
       } else {
-        const res = await supabase
+        let q2 = supabase
           .from('products')
-          .select('id, name, price, stock, category, created_at')
+          .select('id, name, price, stock, category, device_id, created_at')
           .order('name')
           .limit(6);
+        if (deviceFilter) q2 = q2.or(deviceFilter);
+        const res = await q2;
         data = (res.data as Product[]) ?? [];
       }
       setProducts(data ?? []);
@@ -1020,34 +1100,42 @@ function PrintPreview({
         * { font-family: 'Segoe UI', Roboto, Arial, sans-serif; box-sizing: border-box; }
         body { margin: 0; padding: 24px; color: #0f172a; }
         .doc { max-width: 780px; margin: 0 auto; }
-        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0d9488; padding-bottom: 16px; }
-        .brand { display: flex; gap: 12px; align-items: center; }
-        .logo { width: 56px; height: 56px; border-radius: 12px; background: linear-gradient(135deg, #14b8a6, #0f766e); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 20px; }
-        .company-name { font-size: 20px; font-weight: 700; }
-        .company-meta { font-size: 11px; color: #64748b; margin-top: 2px; line-height: 1.5; }
-        .doc-meta { text-align: right; font-size: 11px; color: #64748b; }
-        .doc-meta .num { font-size: 18px; font-weight: 700; color: #0f172a; }
-        .section { margin-top: 18px; }
-        .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #0d9488; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 8px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 12px; }
-        .grid .label { color: #64748b; }
-        .grid .value { font-weight: 600; }
-        .notes { font-size: 12px; color: #334155; margin-top: 4px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
-        th { text-align: left; padding: 6px 8px; background: #f1f5f9; color: #475569; font-weight: 600; font-size: 11px; text-transform: uppercase; }
-        td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
-        td.right { text-align: right; }
-        td.center { text-align: center; }
-        .item-disc { font-size: 10px; color: #059669; }
-        .totals { margin-top: 10px; margin-left: auto; width: 260px; font-size: 12px; }
-        .totals .row { display: flex; justify-content: space-between; padding: 2px 0; }
-        .totals .grand { font-size: 15px; font-weight: 700; border-top: 2px solid #0f172a; padding-top: 6px; margin-top: 4px; }
-        .warranty { margin-top: 16px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; font-size: 11px; color: #334155; line-height: 1.6; white-space: pre-line; }
-        .sign-row { display: flex; justify-content: space-between; gap: 24px; margin-top: 28px; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0d9488; padding-bottom: 16px; gap: 16px; }
+        .brand { display: flex; gap: 12px; align-items: flex-start; }
+        .logo-img { width: 56px; height: 56px; object-fit: contain; border-radius: 8px; }
+        .logo-fallback { width: 56px; height: 56px; border-radius: 12px; background: linear-gradient(135deg, #14b8a6, #0f766e); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 11px; text-align: center; }
+        .company-name { font-size: 20px; font-weight: 700; line-height: 1.2; }
+        .company-meta { font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.6; }
+        .company-meta div { margin-bottom: 1px; }
+        .doc-meta { text-align: right; font-size: 11px; color: #64748b; flex-shrink: 0; }
+        .doc-meta .num { font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+        .doc-meta .meta-line { margin-bottom: 2px; }
+        .paragraph { margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; }
+        .paragraph:first-of-type { margin-top: 20px; }
+        .para-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #0d9488; margin-bottom: 10px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; font-size: 12px; }
+        .info-grid .label { color: #64748b; }
+        .info-grid .value { font-weight: 600; color: #0f172a; }
+        .notes { font-size: 12px; color: #334155; margin-top: 6px; }
+        .items-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .items-table th { text-align: left; padding: 8px 10px; background: #0d9488; color: #fff; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+        .items-table th.center { text-align: center; }
+        .items-table th.right { text-align: right; }
+        .items-table td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
+        .items-table td.center { text-align: center; }
+        .items-table td.right { text-align: right; }
+        .items-table tbody tr:nth-child(even) { background: #f8fafc; }
+        .items-table tbody tr:hover { background: #ecfdf5; }
+        .item-disc { font-size: 10px; color: #059669; margin-top: 2px; }
+        .totals { margin-top: 12px; margin-left: auto; width: 280px; font-size: 12px; }
+        .totals .row { display: flex; justify-content: space-between; padding: 3px 0; }
+        .totals .grand { font-size: 15px; font-weight: 700; border-top: 2px solid #0f172a; padding-top: 8px; margin-top: 6px; }
+        .warranty { font-size: 11px; color: #334155; line-height: 1.7; white-space: pre-line; }
+        .sign-row { display: flex; justify-content: space-between; gap: 24px; margin-top: 36px; }
         .sign-box { flex: 1; text-align: center; }
         .sign-img { height: 70px; margin: 0 auto 4px; display: block; }
         .sign-line { border-top: 1px solid #475569; padding-top: 4px; font-size: 11px; color: #64748b; }
-        .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+        .footer { text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
         @media print { body { padding: 0; } }
       </style></head><body>${node.innerHTML}</body></html>`);
     win.document.close();
@@ -1059,6 +1147,7 @@ function PrintPreview({
   };
 
   const companyName = company?.device_name || 'CELULAR TECH';
+  const logoUrl = company?.company_logo_url || '';
   const initials = companyName.slice(0, 2).toUpperCase();
 
   return (
@@ -1089,61 +1178,81 @@ function PrintPreview({
         {/* Printable area */}
         <div id="os-print-area" className="p-6 sm:p-8 bg-white text-slate-900">
           <div className="doc">
-            {/* Header */}
+            {/* Header with logo */}
             <div className="header">
               <div className="brand">
-                <div className="logo">{initials}</div>
+                {logoUrl ? (
+                  <img src={logoUrl} alt={companyName} className="logo-img" crossOrigin="anonymous" />
+                ) : (
+                  <div className="logo-fallback">{companyName}</div>
+                )}
                 <div>
                   <div className="company-name">{companyName}</div>
                   <div className="company-meta">
                     {company?.company_cnpj && <div>CNPJ: {company.company_cnpj}</div>}
+                    {company?.company_address && <div>{company.company_address}</div>}
                     {company?.company_phone && <div>Tel: {company.company_phone}</div>}
                     {company?.company_email && <div>{company.company_email}</div>}
-                    {company?.company_address && <div>{company.company_address}</div>}
                   </div>
                 </div>
               </div>
               <div className="doc-meta">
                 <div className="num">OS #{String(order.order_number).padStart(4, '0')}</div>
-                <div>{new Date(order.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
-                <div>Status: {STATUS_LABELS[order.status] ?? order.status}</div>
+                <div className="meta-line">Data do Pedido: {fmtDate(order.order_date)}</div>
+                <div className="meta-line">Entrega: {fmtDate(order.delivery_date)}</div>
+                <div className="meta-line">Status: {STATUS_LABELS[order.status] ?? order.status}</div>
               </div>
             </div>
 
-            {/* Customer */}
-            <div className="section">
-              <div className="section-title">Dados do Cliente</div>
-              <div className="grid">
+            {/* Paragraph 1: Business data */}
+            <div className="paragraph">
+              <div className="para-title">Dados da Empresa</div>
+              <div className="info-grid">
+                <div><span className="label">Razão Social: </span><span className="value">{companyName}</span></div>
+                {company?.company_cnpj && <div><span className="label">CNPJ: </span><span className="value">{company.company_cnpj}</span></div>}
+                {company?.company_address && <div><span className="label">Endereço: </span><span className="value">{company.company_address}</span></div>}
+                {company?.company_phone && <div><span className="label">Telefone: </span><span className="value">{company.company_phone}</span></div>}
+                {company?.company_email && <div><span className="label">E-mail: </span><span className="value">{company.company_email}</span></div>}
+              </div>
+            </div>
+
+            {/* Paragraph 2: Customer data */}
+            <div className="paragraph">
+              <div className="para-title">Dados do Cliente</div>
+              <div className="info-grid">
                 <div><span className="label">Nome: </span><span className="value">{order.customer_name}</span></div>
+                {order.customer_document && <div><span className="label">CPF / CNPJ: </span><span className="value">{order.customer_document}</span></div>}
+                {order.customer_rg && <div><span className="label">RG: </span><span className="value">{order.customer_rg}</span></div>}
                 {order.customer_phone && <div><span className="label">Telefone: </span><span className="value">{order.customer_phone}</span></div>}
-                {order.customer_document && <div><span className="label">Documento: </span><span className="value">{order.customer_document}</span></div>}
+                {order.customer_email && <div><span className="label">E-mail: </span><span className="value">{order.customer_email}</span></div>}
+                {order.customer_address && <div><span className="label">Endereço: </span><span className="value">{order.customer_address}</span></div>}
               </div>
+
+              {/* Equipment sub-info inside customer section */}
+              {(order.equipment_model || order.equipment_imei || order.defect_notes) && (
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>Equipamento</div>
+                  <div className="info-grid">
+                    {order.equipment_model && <div><span className="label">Modelo: </span><span className="value">{order.equipment_model}</span></div>}
+                    {order.equipment_imei && <div><span className="label">IMEI/Série: </span><span className="value">{order.equipment_imei}</span></div>}
+                  </div>
+                  {order.defect_notes && <div className="notes">Defeito relatado: {order.defect_notes}</div>}
+                </div>
+              )}
             </div>
 
-            {/* Equipment */}
-            {(order.equipment_model || order.equipment_imei || order.defect_notes) && (
-              <div className="section">
-                <div className="section-title">Equipamento</div>
-                <div className="grid">
-                  {order.equipment_model && <div><span className="label">Modelo: </span><span className="value">{order.equipment_model}</span></div>}
-                  {order.equipment_imei && <div><span className="label">IMEI/Série: </span><span className="value">{order.equipment_imei}</span></div>}
-                </div>
-                {order.defect_notes && <div className="notes">Defeito relatado: {order.defect_notes}</div>}
-              </div>
-            )}
-
-            {/* Items */}
+            {/* Paragraph 3: Items / Services table */}
             {items.length > 0 && (
-              <div className="section">
-                <div className="section-title">Itens / Serviços</div>
-                <table>
+              <div className="paragraph">
+                <div className="para-title">Itens / Serviços</div>
+                <table className="items-table">
                   <thead>
                     <tr>
                       <th>Descrição</th>
-                      <th className="text-center">Qtd</th>
-                      <th className="text-right">Unitário</th>
-                      <th className="text-right">Desc.</th>
-                      <th className="text-right">Subtotal</th>
+                      <th className="center">Qtd</th>
+                      <th className="right">Valor Unitário</th>
+                      <th className="right">Desconto</th>
+                      <th className="right">Subtotal</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1185,15 +1294,15 @@ function PrintPreview({
               </div>
             )}
 
-            {/* Warranty */}
+            {/* Paragraph 4: Warranty */}
             {order.warranty_terms && (
-              <div className="warranty">
-                <strong>Termo de Garantia</strong><br />
-                {order.warranty_terms}
+              <div className="paragraph">
+                <div className="para-title">Termo de Garantia</div>
+                <div className="warranty">{order.warranty_terms}</div>
               </div>
             )}
 
-            {/* Signature */}
+            {/* Signature lines */}
             <div className="sign-row">
               <div className="sign-box">
                 <div className="sign-line">Cliente</div>
@@ -1203,8 +1312,19 @@ function PrintPreview({
               </div>
             </div>
 
-            <div className="footer">
-              Documento gerado em {new Date().toLocaleString('pt-BR')} · {companyName}
+            {/* Paragraph 5: Document generation date/time */}
+            <div className="paragraph">
+              <div className="para-title">Informações do Documento</div>
+              <div className="info-grid">
+                <div><span className="label">Data do Pedido: </span><span className="value">{fmtDate(order.order_date)}</span></div>
+                <div><span className="label">Data da Entrega: </span><span className="value">{fmtDate(order.delivery_date)}</span></div>
+                <div><span className="label">Documento gerado em: </span><span className="value">{new Date().toLocaleString('pt-BR')}</span></div>
+                <div><span className="label">Nº da OS: </span><span className="value">#{String(order.order_number).padStart(4, '0')}</span></div>
+              </div>
+            </div>
+
+            <div className="footer" style={{ marginTop: '16px' }}>
+              {companyName} · CNPJ {company?.company_cnpj || '—'} · {company?.company_phone || ''}
             </div>
           </div>
         </div>
