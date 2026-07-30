@@ -1137,7 +1137,16 @@ function PrintPreview({
     if (!node) return;
     const win = window.open('', '_blank', 'width=820,height=1160');
     if (!win) return;
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>OS #${String(order.order_number).padStart(4, '0')}</title>
+
+    // Trata o caminho para garantir que sempre tenha a barra inicial
+  const logoPath = company?.company_logo_url || '';
+  const formattedLogoUrl = logoPath.startsWith('/') 
+    ? `${window.location.origin}${logoPath}` 
+    : `${window.location.origin}/${logoPath}`;
+
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8">
+      <base href="${window.location.origin}">
+      <title>OS #${String(order.order_number).padStart(4, '0')}</title>
       <style>
         * { font-family: 'Segoe UI', Roboto, Arial, sans-serif; box-sizing: border-box; }
         body { margin: 0; padding: 24px; color: #0f172a; background: #fff; }
@@ -1150,8 +1159,8 @@ function PrintPreview({
         .company-meta { font-size: 11px; color: #475569; margin-top: 4px; line-height: 1.5; }
         .company-meta span { display: block; }
         .doc-meta { text-align: right; font-size: 11px; color: #64748b; flex-shrink: 0; }
-        .doc-meta .num { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
-        .doc-meta .meta-line { margin-bottom: 2px; }
+        .num { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+        .meta-line { margin-bottom: 2px; }
         .paragraph { margin-top: 20px; padding-top: 14px; border-top: 1px solid #e2e8f0; }
         .para-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #0d9488; margin-bottom: 8px; }
         .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 12px; }
@@ -1178,11 +1187,35 @@ function PrintPreview({
         @media print { body { padding: 0; } }
       </style></head><body>${node.innerHTML}</body></html>`);
     win.document.close();
+    // Força o navegador a esperar a imagem carregar na nova janela antes de abrir a caixa de impressão
+  const imgEl = win.document.querySelector('img.logo-img') as HTMLImageElement | null;
+
+  if (imgEl) {
+    // Se a imagem já estiver carregada em cache
+    if (imgEl.complete) {
+      win.focus();
+      win.print();
+    } else {
+      // Aguarda o evento de carregamento da imagem
+      imgEl.onload = () => {
+        win.focus();
+        win.print();
+      };
+      // Fallback caso a imagem falhe ao carregar
+      imgEl.onerror = () => {
+        win.focus();
+        win.print();
+      };
+    }
+  } else {
     win.focus();
+    win.print();
+  }
+    /*win.focus();
     setTimeout(() => {
       win.print();
       win.close();
-    }, 300);
+    }, 300);*/
   };
 
   return (
