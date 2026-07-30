@@ -1127,7 +1127,7 @@ function PrintPreview({
   const companyAddress = company?.company_address || '';
   const companyPhone = company?.company_phone || '';
   const companyEmail = company?.company_email || '';
-  const logoUrl = company?.company_logo_url || '';
+  const logoUrl = 'images/logo-R&G.jpg' || '';
 
   const handlePrint = () => {
     const node = document.getElementById('os-print-area');
@@ -1213,11 +1213,14 @@ function PrintPreview({
             {/* Header com Logo e Dados de Emissor Completo */}
             <div className="header">
               <div className="brand">
-                {logoUrl ? (
-                  <img src={logoUrl} alt={companyName} className="logo-img" crossOrigin="anonymous" />
-                ) : (
-                  <div className="logo-fallback">{companyName.slice(0, 2).toUpperCase()}</div>
-                )}
+                <img 
+      src={logoUrl} 
+      alt={companyName} 
+      className="logo-img" 
+      onError={(e) => {
+        // Se por algum motivo o arquivo local falhar, esconde a imagem para não quebrar o layout
+        (e.target as HTMLElement).style.display = 'none';
+      }}/>
                 <div>
                   <div className="company-name">{companyName}</div>
                   <div className="company-meta">
