@@ -1127,7 +1127,7 @@ function PrintPreview({
   const companyAddress = company?.company_address || '';
   const companyPhone = company?.company_phone || '';
   const companyEmail = company?.company_email || '';
-  const logoUrl = 'images/logo-R&G.jpg' || '';
+  const logoUrl = '/images/logo-R&G.jpg' || '';
 
   const handlePrint = () => {
     const node = document.getElementById('os-print-area');
@@ -1214,7 +1214,7 @@ function PrintPreview({
             <div className="header">
               <div className="brand">
                 <img 
-      src= 'images/logo-R&G.jpg' 
+      src= '/images/logo-R&G.jpg' 
       alt={companyName} 
       className="logo-img" 
       onError={(e) => {
