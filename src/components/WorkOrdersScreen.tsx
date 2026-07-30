@@ -1214,7 +1214,7 @@ function PrintPreview({
             <div className="header">
               <div className="brand">
                 <img 
-      src={logoUrl} 
+      src= 'images/logo-R&G.jpg' 
       alt={companyName} 
       className="logo-img" 
       onError={(e) => {
