@@ -751,10 +751,10 @@ function WorkOrderForm({
             </button>
           </Section>
 
-          {/* Signature */}
+          {/* Signature 
           <Section icon={FileText} title="Assinatura do Cliente">
             <SignaturePad value={signature} onChange={setSignature} />
-          </Section>
+          </Section>*/}
 
           {/* Status */}
           <Field label="Status">
@@ -1079,6 +1079,8 @@ function SignaturePad({ value, onChange }: { value: string | null; onChange: (s:
 
 /* ---------------- Print Preview ---------------- */
 
+/* ---------------- Print Preview (Com dados completos do emissor) ---------------- */
+
 function PrintPreview({
   order,
   company,
@@ -1090,52 +1092,57 @@ function PrintPreview({
 }) {
   const items = (order.items_json ?? []) as WorkOrderItem[];
 
+  // Fallbacks para garantir que as informações do emissor sempre apareçam
+  const companyName = company?.device_name || 'CELULAR TECH';
+  const companyCnpj = company?.company_cnpj || '';
+  const companyAddress = company?.company_address || '';
+  const companyPhone = company?.company_phone || '';
+  const companyEmail = company?.company_email || '';
+  const logoUrl = company?.company_logo_url || '';
+
   const handlePrint = () => {
     const node = document.getElementById('os-print-area');
     if (!node) return;
     const win = window.open('', '_blank', 'width=820,height=1160');
     if (!win) return;
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>OS ${order.order_number}</title>
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>OS #${String(order.order_number).padStart(4, '0')}</title>
       <style>
         * { font-family: 'Segoe UI', Roboto, Arial, sans-serif; box-sizing: border-box; }
-        body { margin: 0; padding: 24px; color: #0f172a; }
+        body { margin: 0; padding: 24px; color: #0f172a; background: #fff; }
         .doc { max-width: 780px; margin: 0 auto; }
         .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0d9488; padding-bottom: 16px; gap: 16px; }
         .brand { display: flex; gap: 12px; align-items: flex-start; }
-        .logo-img { width: 56px; height: 56px; object-fit: contain; border-radius: 8px; }
-        .logo-fallback { width: 56px; height: 56px; border-radius: 12px; background: linear-gradient(135deg, #14b8a6, #0f766e); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 11px; text-align: center; }
-        .company-name { font-size: 20px; font-weight: 700; line-height: 1.2; }
-        .company-meta { font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.6; }
-        .company-meta div { margin-bottom: 1px; }
+        .logo-img { width: 64px; height: 64px; object-fit: contain; border-radius: 8px; }
+        .logo-fallback { width: 56px; height: 56px; border-radius: 12px; background: linear-gradient(135deg, #14b8a6, #0f766e); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px; text-align: center; }
+        .company-name { font-size: 20px; font-weight: 700; line-height: 1.2; color: #0f172a; }
+        .company-meta { font-size: 11px; color: #475569; margin-top: 4px; line-height: 1.5; }
+        .company-meta span { display: block; }
         .doc-meta { text-align: right; font-size: 11px; color: #64748b; flex-shrink: 0; }
-        .doc-meta .num { font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+        .doc-meta .num { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
         .doc-meta .meta-line { margin-bottom: 2px; }
-        .paragraph { margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; }
-        .paragraph:first-of-type { margin-top: 20px; }
-        .para-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #0d9488; margin-bottom: 10px; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; font-size: 12px; }
+        .paragraph { margin-top: 20px; padding-top: 14px; border-top: 1px solid #e2e8f0; }
+        .para-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #0d9488; margin-bottom: 8px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 12px; }
         .info-grid .label { color: #64748b; }
         .info-grid .value { font-weight: 600; color: #0f172a; }
-        .notes { font-size: 12px; color: #334155; margin-top: 6px; }
-        .items-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        .items-table th { text-align: left; padding: 8px 10px; background: #0d9488; color: #fff; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+        .notes { font-size: 12px; color: #334155; margin-top: 6px; background: #f8fafc; padding: 8px; rounded: 6px; border: 1px solid #e2e8f0; }
+        .items-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+        .items-table th { text-align: left; padding: 8px 10px; background: #0d9488; color: #fff; font-weight: 600; font-size: 11px; text-transform: uppercase; }
         .items-table th.center { text-align: center; }
         .items-table th.right { text-align: right; }
         .items-table td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
         .items-table td.center { text-align: center; }
         .items-table td.right { text-align: right; }
         .items-table tbody tr:nth-child(even) { background: #f8fafc; }
-        .items-table tbody tr:hover { background: #ecfdf5; }
         .item-disc { font-size: 10px; color: #059669; margin-top: 2px; }
         .totals { margin-top: 12px; margin-left: auto; width: 280px; font-size: 12px; }
         .totals .row { display: flex; justify-content: space-between; padding: 3px 0; }
         .totals .grand { font-size: 15px; font-weight: 700; border-top: 2px solid #0f172a; padding-top: 8px; margin-top: 6px; }
-        .warranty { font-size: 11px; color: #334155; line-height: 1.7; white-space: pre-line; }
-        .sign-row { display: flex; justify-content: space-between; gap: 24px; margin-top: 36px; }
+        .warranty { font-size: 11px; color: #334155; line-height: 1.6; white-space: pre-line; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; }
+        .sign-row { display: flex; justify-content: space-between; gap: 40px; margin-top: 48px; }
         .sign-box { flex: 1; text-align: center; }
-        .sign-img { height: 70px; margin: 0 auto 4px; display: block; }
-        .sign-line { border-top: 1px solid #475569; padding-top: 4px; font-size: 11px; color: #64748b; }
-        .footer { text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+        .sign-line { border-top: 1px solid #475569; padding-top: 6px; font-size: 11px; font-weight: 600; color: #334155; }
+        .footer { text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 12px; margin-top: 24px; }
         @media print { body { padding: 0; } }
       </style></head><body>${node.innerHTML}</body></html>`);
     win.document.close();
@@ -1145,10 +1152,6 @@ function PrintPreview({
       win.close();
     }, 300);
   };
-
-  const companyName = company?.device_name || 'CELULAR TECH';
-  const logoUrl = company?.company_logo_url || '';
-  const initials = companyName.slice(0, 2).toUpperCase();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn overflow-y-auto">
@@ -1178,45 +1181,33 @@ function PrintPreview({
         {/* Printable area */}
         <div id="os-print-area" className="p-6 sm:p-8 bg-white text-slate-900">
           <div className="doc">
-            {/* Header with logo */}
+            {/* Header com Logo e Dados de Emissor Completo */}
             <div className="header">
               <div className="brand">
                 {logoUrl ? (
                   <img src={logoUrl} alt={companyName} className="logo-img" crossOrigin="anonymous" />
                 ) : (
-                  <div className="logo-fallback">{companyName}</div>
+                  <div className="logo-fallback">{companyName.slice(0, 2).toUpperCase()}</div>
                 )}
                 <div>
                   <div className="company-name">{companyName}</div>
                   <div className="company-meta">
-                    {company?.company_cnpj && <div>CNPJ: {company.company_cnpj}</div>}
-                    {company?.company_address && <div>{company.company_address}</div>}
-                    {company?.company_phone && <div>Tel: {company.company_phone}</div>}
-                    {company?.company_email && <div>{company.company_email}</div>}
+                    {companyCnpj && <span>CNPJ: {companyCnpj}</span>}
+                    {companyAddress && <span>Endereço: {companyAddress}</span>}
+                    {companyPhone && <span>Tel: {companyPhone}</span>}
+                    {companyEmail && <span>E-mail: {companyEmail}</span>}
                   </div>
                 </div>
               </div>
               <div className="doc-meta">
                 <div className="num">OS #{String(order.order_number).padStart(4, '0')}</div>
                 <div className="meta-line">Data do Pedido: {fmtDate(order.order_date)}</div>
-                <div className="meta-line">Entrega: {fmtDate(order.delivery_date)}</div>
+                <div className="meta-line">Entrega Estimada: {fmtDate(order.delivery_date)}</div>
                 <div className="meta-line">Status: {STATUS_LABELS[order.status] ?? order.status}</div>
               </div>
             </div>
 
-            {/* Paragraph 1: Business data */}
-            <div className="paragraph">
-              <div className="para-title">Dados da Empresa</div>
-              <div className="info-grid">
-                <div><span className="label">Razão Social: </span><span className="value">{companyName}</span></div>
-                {company?.company_cnpj && <div><span className="label">CNPJ: </span><span className="value">{company.company_cnpj}</span></div>}
-                {company?.company_address && <div><span className="label">Endereço: </span><span className="value">{company.company_address}</span></div>}
-                {company?.company_phone && <div><span className="label">Telefone: </span><span className="value">{company.company_phone}</span></div>}
-                {company?.company_email && <div><span className="label">E-mail: </span><span className="value">{company.company_email}</span></div>}
-              </div>
-            </div>
-
-            {/* Paragraph 2: Customer data */}
+            {/* Dados do Cliente */}
             <div className="paragraph">
               <div className="para-title">Dados do Cliente</div>
               <div className="info-grid">
@@ -1228,29 +1219,29 @@ function PrintPreview({
                 {order.customer_address && <div><span className="label">Endereço: </span><span className="value">{order.customer_address}</span></div>}
               </div>
 
-              {/* Equipment sub-info inside customer section */}
+              {/* Equipamento */}
               {(order.equipment_model || order.equipment_imei || order.defect_notes) && (
                 <div style={{ marginTop: '12px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>Equipamento</div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Equipamento / Aparelho</div>
                   <div className="info-grid">
                     {order.equipment_model && <div><span className="label">Modelo: </span><span className="value">{order.equipment_model}</span></div>}
-                    {order.equipment_imei && <div><span className="label">IMEI/Série: </span><span className="value">{order.equipment_imei}</span></div>}
+                    {order.equipment_imei && <div><span className="label">IMEI / Nº Série: </span><span className="value">{order.equipment_imei}</span></div>}
                   </div>
-                  {order.defect_notes && <div className="notes">Defeito relatado: {order.defect_notes}</div>}
+                  {order.defect_notes && <div className="notes"><strong>Defeito/Observação:</strong> {order.defect_notes}</div>}
                 </div>
               )}
             </div>
 
-            {/* Paragraph 3: Items / Services table */}
+            {/* Tabela de Itens e Serviços */}
             {items.length > 0 && (
               <div className="paragraph">
-                <div className="para-title">Itens / Serviços</div>
+                <div className="para-title">Itens e Serviços Solicitados</div>
                 <table className="items-table">
                   <thead>
                     <tr>
                       <th>Descrição</th>
                       <th className="center">Qtd</th>
-                      <th className="right">Valor Unitário</th>
+                      <th className="right">Unitário</th>
                       <th className="right">Desconto</th>
                       <th className="right">Subtotal</th>
                     </tr>
@@ -1268,7 +1259,7 @@ function PrintPreview({
                             {it.name}
                             {dv > 0 && (
                               <div className="item-disc">
-                                Desc. {it.discount_type === 'percentage' ? `${dv}%` : BRL(disc)}
+                                Desc: {it.discount_type === 'percentage' ? `${dv}%` : BRL(disc)}
                               </div>
                             )}
                           </td>
@@ -1285,46 +1276,38 @@ function PrintPreview({
                   <div className="row"><span>Subtotal</span><span>{BRL(Number(order.subtotal))}</span></div>
                   {Number(order.discount_value) > 0 && (
                     <div className="row" style={{ color: '#059669' }}>
-                      <span>Desconto sobre total ({order.discount_type === 'percentage' ? '%' : 'R$'})</span>
+                      <span>Desconto Global</span>
                       <span>- {BRL(Number(order.discount_value))}</span>
                     </div>
                   )}
-                  <div className="row grand"><span>Total</span><span>{BRL(Number(order.total_amount))}</span></div>
+                  <div className="row grand"><span>Total Final</span><span>{BRL(Number(order.total_amount))}</span></div>
                 </div>
               </div>
             )}
 
-            {/* Paragraph 4: Warranty */}
+            {/* Termo de Garantia */}
             {order.warranty_terms && (
               <div className="paragraph">
-                <div className="para-title">Termo de Garantia</div>
+                <div className="para-title">Termo de Garantia e Condições</div>
                 <div className="warranty">{order.warranty_terms}</div>
               </div>
             )}
 
-            {/* Signature lines */}
+            {/* Linhas de Assinatura Física */}
             <div className="sign-row">
               <div className="sign-box">
-                <div className="sign-line">Cliente</div>
+                <div className="sign-line">Assinatura do Cliente</div>
+                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>{order.customer_name}</div>
               </div>
               <div className="sign-box">
-                <div className="sign-line">{companyName}</div>
+                <div className="sign-line">Assinatura do Responsável / Técnico</div>
+                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>{companyName}</div>
               </div>
             </div>
 
-            {/* Paragraph 5: Document generation date/time */}
-            <div className="paragraph">
-              <div className="para-title">Informações do Documento</div>
-              <div className="info-grid">
-                <div><span className="label">Data do Pedido: </span><span className="value">{fmtDate(order.order_date)}</span></div>
-                <div><span className="label">Data da Entrega: </span><span className="value">{fmtDate(order.delivery_date)}</span></div>
-                <div><span className="label">Documento gerado em: </span><span className="value">{new Date().toLocaleString('pt-BR')}</span></div>
-                <div><span className="label">Nº da OS: </span><span className="value">#{String(order.order_number).padStart(4, '0')}</span></div>
-              </div>
-            </div>
-
-            <div className="footer" style={{ marginTop: '16px' }}>
-              {companyName} · CNPJ {company?.company_cnpj || '—'} · {company?.company_phone || ''}
+            {/* Rodapé do documento */}
+            <div className="footer">
+              {companyName} {companyCnpj && `· CNPJ: ${companyCnpj}`} {companyPhone && `· Tel: ${companyPhone}`}
             </div>
           </div>
         </div>
