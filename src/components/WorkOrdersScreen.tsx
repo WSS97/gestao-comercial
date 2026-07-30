@@ -1127,7 +1127,10 @@ function PrintPreview({
   const companyAddress = company?.company_address || '';
   const companyPhone = company?.company_phone || '';
   const companyEmail = company?.company_email || '';
-  const logoUrl = '/images/logo-R&G.jpg' || '';
+  const dbLogoPath = company?.company_logo_url || '';
+  const logoUrl = dbLogoPath.startsWith('/')
+    ? `${window.location.origin}${dbLogoPath}`
+    : dbLogoPath;
 
   const handlePrint = () => {
     const node = document.getElementById('os-print-area');
