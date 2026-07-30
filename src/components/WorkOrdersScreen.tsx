@@ -115,9 +115,38 @@ export default function WorkOrdersScreen() {
   }, []);
 
   useEffect(() => {
-    fetchOrders();
-    setCompany(getDeviceInfo());
-  }, [fetchOrders]);
+  fetchOrders();
+
+  async function loadCompanyData() {
+    try {
+      // 1. Obtém as informações do dispositivo local (ex: token, id ou device_id)
+      const deviceInfo = getDeviceInfo();
+      
+      if (!deviceInfo) return;
+
+      // 2. Busca na tabela authorized_devices o registro que bate com o dispositivo local
+      const { data, error } = await supabase
+        .from('authorized_devices')
+        .select('*')
+        // Ajuste o campo do .eq para a chave usada na sua tabela (ex: 'id', 'device_token' ou 'device_id')
+        .eq('id', deviceInfo.id) 
+        .maybeSingle();
+
+      if (error) {
+        console.error('Erro ao carregar dados do dispositivo autorizador:', error);
+        return;
+      }
+
+      if (data) {
+        setCompany(data);
+      }
+    } catch (err) {
+      console.error('Falha ao buscar empresa:', err);
+    }
+  }
+
+  loadCompanyData();
+}, [fetchOrders]);
 
   const itemsSubtotal = form.items.reduce((s, i) => s + itemSubtotal(i), 0);
   const totalDiscount = (() => {
