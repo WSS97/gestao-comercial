@@ -38,7 +38,7 @@ export default function Navbar({ route, onNavigate, onDisconnect, company }: Nav
             <p className="text-[11px] text-brand-teal-dark dark:text-brand-teal-light flex items-center gap-1">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="truncate" title={company?.device_name}>
-                {company?.device_name || 'Dispositivo Altorizado'}
+                {company?.device_name || 'Dispositivo Autorizado'}
               </span>
             </p>
           </div>
