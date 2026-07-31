@@ -18,32 +18,33 @@ function AppInner() {
     const isAuth = isDeviceAuthorized();
     setAuthorized(isAuth);
 
-    // Se estiver autorizado, busca os dados da empresa no Supabase
     if (isAuth) {
       async function loadCompanyData() {
         const localDevice = getDeviceInfo();
-        if (!localDevice?.token) return;
+        if (!localDevice) return;
 
-        const { data, error } = await supabase
-          .from('authorized_devices')
-          .select('*')
-          .eq('id', deviceId) // Ou .eq('id', localDevice.id) dependendo do seu schema
-          .single();
+        // 1. Define de imediato usando o cache local
+        setCompany(localDevice);
 
-        if (!error && data) {
-          setCompany(data);
+        // 2. Atualiza em segundo plano via Supabase
+        const deviceId = localDevice.id;
+
+        if (deviceId) {
+          const { data, error } = await supabase
+            .from('authorized_devices')
+            .select('*')
+            .eq('id', deviceId)
+            .maybeSingle();
+
+          if (!error && data) {
+            setCompany(data);
+          }
         }
       }
 
       loadCompanyData();
     }
   }, [authorized]);
-
-/*
-
-  useEffect(() => {
-    setAuthorized(isDeviceAuthorized());
-  }, []);*/
 
   const handleDisconnect = () => {
     clearDeviceToken();
@@ -58,7 +59,7 @@ function AppInner() {
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 transition-colors">
-      <Navbar route={route} onNavigate={setRoute} onDisconnect={handleDisconnect} company={company}/>
+      <Navbar route={route} onNavigate={setRoute} onDisconnect={handleDisconnect} company={company} />
       <main>
         {route === 'pdv' && <PDVScreen />}
         {route === 'estoque' && <EstoqueScreen />}
