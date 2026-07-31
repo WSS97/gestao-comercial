@@ -21,14 +21,11 @@ export default function EstoqueScreen() {
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     const device = getDeviceInfo();
-    let query = supabase
+    const { data } = await supabase
       .from('products')
       .select('id, name, price, stock, category, device_id, created_at')
+      .eq('device_id', device?.id ?? '')
       .order('name');
-    if (device?.id) {
-      query = query.or(`device_id.eq.${device.id},device_id.is.null`);
-    }
-    const { data } = await query;
     setProducts((data as Product[]) ?? []);
     setLoading(false);
   }, []);
