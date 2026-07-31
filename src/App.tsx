@@ -13,7 +13,7 @@ function AppInner() {
   const [authorized, setAuthorized] = useState(isDeviceAuthorized());
   const [route, setRoute] = useState<Route>('pdv');
   const [company, setCompany] = useState<AuthorizedDevice | null>(null);
-  
+
   useEffect(() => {
     const isAuth = isDeviceAuthorized();
     setAuthorized(isAuth);
@@ -62,7 +62,6 @@ function AppInner() {
       <main>
         {route === 'pdv' && <PDVScreen />}
         {route === 'estoque' && <EstoqueScreen />}
-        {route === 'os' && <WorkOrdersScreen />}
         {route === 'os' && <WorkOrdersScreen company={company} />}
         {route === 'dashboard' && <DashboardScreen />}
       </main>
