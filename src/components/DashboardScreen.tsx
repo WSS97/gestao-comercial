@@ -55,7 +55,7 @@ export default function DashboardScreen() {
     const { data } = await supabase
       .from('sales')
       .select('id, device_id, subtotal, discount_type, discount_value, total_amount, payment_method, notes, status, created_at')
-      .eq('device_id', device?.id ?? '')
+      .eq('device_id', getDeviceInfo()?.id ?? '');
       .order('created_at', { ascending: false })
       .limit(500);
     setAllSales((data as Sale[]) ?? []);
@@ -130,48 +130,66 @@ export default function DashboardScreen() {
   };
 
   const handleCancel = async (sale: Sale) => {
-    setCancellingId(sale.id);
-    try {
-      // restore stock from sale items
-      const { data: items } = await supabase
-        .from('sale_items')
-        .select('product_id, quantity')
-        .eq('sale_id', sale.id);
-      if (items) {
-        await Promise.all(
-          (items as { product_id: string; quantity: number }[]).map((it) =>
-            supabase.rpc('increment_product_stock', {
-              p_product_id: it.product_id,
-              p_qty: it.quantity,
-            }).catch(async () => {
-              const { data: prod } = await supabase
-                .from('products')
-                .select('stock')
-                .eq('id', it.product_id)
-                .maybeSingle();
-              if (prod) {
-                await supabase
-                  .from('products')
-                  .update({ stock: (prod.stock ?? 0) + it.quantity })
-                  .eq('id', it.product_id);
-              }
-            })
-          )
-        );
+  setCancellingId(sale.id);
+  try {
+    // 1. Buscar os itens da venda
+    const { data: items, error: itemsError } = await supabase
+      .from('sale_items')
+      .select('product_id, quantity')
+      .eq('sale_id', sale.id);
+
+    if (itemsError) throw itemsError;
+
+    // 2. Devolver estoque dos produtos
+    if (items && items.length > 0) {
+      for (const it of items) {
+        // Tenta RPC primeiro
+        const { error: rpcError } = await supabase.rpc('increment_product_stock', {
+          p_product_id: it.product_id,
+          p_qty: it.quantity,
+        });
+
+        // Fallback caso a RPC falhe
+        if (rpcError) {
+          const { data: prod } = await supabase
+            .from('products')
+            .select('stock')
+            .eq('id', it.product_id)
+            .maybeSingle();
+
+          if (prod) {
+            const { error: updateStockErr } = await supabase
+              .from('products')
+              .update({ stock: (prod.stock ?? 0) + it.quantity })
+              .eq('id', it.product_id);
+
+            if (updateStockErr) console.error('Erro ao atualizar estoque:', updateStockErr);
+          }
+        }
       }
-      await supabase
-        .from('sales')
-        .update({ status: 'CANCELLED' })
-        .eq('id', sale.id)
-        .eq('device_id', getDeviceInfo()?.id ?? '');
-      await fetchSales();
-      setConfirmCancel(null);
-    } catch {
-      // ignore
-    } finally {
-      setCancellingId(null);
     }
-  };
+
+    // 3. Atualizar o status da venda para CANCELLED
+    const deviceId = getDeviceInfo()?.id ?? '';
+    const { error: updateSaleError } = await supabase
+      .from('sales')
+      .update({ status: 'CANCELLED' })
+      .eq('id', sale.id)
+      .eq('device_id', deviceId);
+
+    if (updateSaleError) throw updateSaleError;
+
+    // Recarrega a lista e fecha o modal
+    await fetchSales();
+    setConfirmCancel(null);
+
+  } catch (err: any) {
+    console.error('Erro detalhado ao cancelar venda:', err);
+    alert(`Erro ao cancelar venda: ${err.message || 'Verifique o console'}`);
+  } finally {
+    setCancellingId(null);
+  }
+};
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
