@@ -52,12 +52,17 @@ export default function DashboardScreen() {
   const fetchSales = useCallback(async () => {
     setLoading(true);
     const device = getDeviceInfo();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('sales')
-      .select('id, device_id, subtotal, discount_type, discount_value, total_amount, payment_method, notes, status, created_at')
-      .eq('device_id', getDeviceInfo()?.id ?? '');
-      .order('created_at', { ascending: false })
-      .limit(500);
+    .select('id, device_id, subtotal, discount_type, discount_value, total_amount, payment_method, notes, status, created_at')
+    .eq('device_id', device?.id ?? '') // Filtra pelo ID do dispositivo
+    .order('created_at', { ascending: false })
+    .limit(500);
+
+    if (error) {
+    console.error('Erro ao buscar vendas:', error);
+  }
+  
     setAllSales((data as Sale[]) ?? []);
     setLoading(false);
   }, []);
