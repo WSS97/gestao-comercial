@@ -6,19 +6,49 @@ import PDVScreen from '@/components/PDVScreen';
 import EstoqueScreen from '@/components/EstoqueScreen';
 import DashboardScreen from '@/components/DashboardScreen';
 import WorkOrdersScreen from '@/components/WorkOrdersScreen';
-import { isDeviceAuthorized, clearDeviceToken } from '@/lib/auth';
+import { isDeviceAuthorized, clearDeviceToken, getDeviceInfo } from '@/lib/auth';
+import { supabase, type AuthorizedDevice } from '@/lib/supabase';
 
 function AppInner() {
   const [authorized, setAuthorized] = useState(isDeviceAuthorized());
   const [route, setRoute] = useState<Route>('pdv');
+  const [company, setCompany] = useState<AuthorizedDevice | null>(null);
+  
+  useEffect(() => {
+    const isAuth = isDeviceAuthorized();
+    setAuthorized(isAuth);
+
+    // Se estiver autorizado, busca os dados da empresa no Supabase
+    if (isAuth) {
+      async function loadCompanyData() {
+        const localDevice = getDeviceInfo();
+        if (!localDevice?.token) return;
+
+        const { data, error } = await supabase
+          .from('authorized_devices')
+          .select('*')
+          .eq('device_token', localDevice.token) // Ou .eq('id', localDevice.id) dependendo do seu schema
+          .single();
+
+        if (!error && data) {
+          setCompany(data);
+        }
+      }
+
+      loadCompanyData();
+    }
+  }, [authorized]);
+
+/*
 
   useEffect(() => {
     setAuthorized(isDeviceAuthorized());
-  }, []);
+  }, []);*/
 
   const handleDisconnect = () => {
     clearDeviceToken();
     setAuthorized(false);
+    setCompany(null);
     setRoute('pdv');
   };
 
@@ -28,11 +58,12 @@ function AppInner() {
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 transition-colors">
-      <Navbar route={route} onNavigate={setRoute} onDisconnect={handleDisconnect} />
+      <Navbar route={route} onNavigate={setRoute} onDisconnect={handleDisconnect} company={company}/>
       <main>
         {route === 'pdv' && <PDVScreen />}
         {route === 'estoque' && <EstoqueScreen />}
         {route === 'os' && <WorkOrdersScreen />}
+        {route === 'os' && <WorkOrdersScreen company={company} />}
         {route === 'dashboard' && <DashboardScreen />}
       </main>
     </div>

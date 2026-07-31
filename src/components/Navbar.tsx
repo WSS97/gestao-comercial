@@ -1,6 +1,7 @@
 import { ShoppingCart, Package, LayoutDashboard, Sun, Moon, LogOut, ShieldCheck, FileText } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { getDeviceInfo, clearDeviceToken } from '@/lib/auth';
+import { type AuthorizedDevice } from '@/lib/supabase';
 
 export type Route = 'pdv' | 'estoque' | 'dashboard' | 'os';
 
@@ -8,6 +9,7 @@ type NavbarProps = {
   route: Route;
   onNavigate: (r: Route) => void;
   onDisconnect: () => void;
+  company?: AuthorizedDevice | null;
 };
 
 const NAV_ITEMS: { id: Route; label: string; icon: typeof ShoppingCart }[] = [
@@ -17,7 +19,7 @@ const NAV_ITEMS: { id: Route; label: string; icon: typeof ShoppingCart }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
 ];
 
-export default function Navbar({ route, onNavigate, onDisconnect }: NavbarProps) {
+export default function Navbar({ route, onNavigate, onDisconnect, comapny }: NavbarProps) {
   const { theme, toggleTheme } = useTheme();
   const device = getDeviceInfo();
 
@@ -31,11 +33,13 @@ export default function Navbar({ route, onNavigate, onDisconnect }: NavbarProps)
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold tracking-wide text-slate-900 dark:text-white truncate">
-              CELULAR TECH
+              HESC DIGITAL
             </p>
             <p className="text-[11px] text-brand-teal-dark dark:text-brand-teal-light flex items-center gap-1">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Dispositivo Autorizado
+              <span className="truncate" title={deviceName}>
+                {company?.device_name || 'Dispositivo Altorizado'}
+              </span>
             </p>
           </div>
         </div>
