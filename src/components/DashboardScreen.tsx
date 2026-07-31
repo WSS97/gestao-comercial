@@ -51,9 +51,11 @@ export default function DashboardScreen() {
 
   const fetchSales = useCallback(async () => {
     setLoading(true);
+    const device = getDeviceInfo();
     const { data } = await supabase
       .from('sales')
       .select('id, device_id, subtotal, discount_type, discount_value, total_amount, payment_method, notes, status, created_at')
+      .eq('device_id', device?.id ?? '')
       .order('created_at', { ascending: false })
       .limit(500);
     setAllSales((data as Sale[]) ?? []);
@@ -123,7 +125,7 @@ export default function DashboardScreen() {
     setReceipt({
       sale,
       items: (items as SaleItem[]) ?? [],
-      deviceName: getDeviceInfo()?.device_name ?? null,
+      device: getDeviceInfo() ?? null,
     });
   };
 
@@ -141,8 +143,6 @@ export default function DashboardScreen() {
             supabase.rpc('increment_product_stock', {
               p_product_id: it.product_id,
               p_qty: it.quantity,
-            }).then(() => {
-              // rpc may not exist; fallback to read+update
             }).catch(async () => {
               const { data: prod } = await supabase
                 .from('products')
@@ -162,7 +162,8 @@ export default function DashboardScreen() {
       await supabase
         .from('sales')
         .update({ status: 'CANCELLED' })
-        .eq('id', sale.id);
+        .eq('id', sale.id)
+        .eq('device_id', getDeviceInfo()?.id ?? '');
       await fetchSales();
       setConfirmCancel(null);
     } catch {

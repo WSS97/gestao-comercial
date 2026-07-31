@@ -105,9 +105,11 @@ export default function WorkOrdersScreen() {
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
+    const device = getDeviceInfo();
     const { data } = await supabase
       .from('work_orders')
       .select('id, device_id, order_number, customer_name, customer_phone, customer_document, customer_address, customer_email, customer_rg, equipment_model, equipment_imei, defect_notes, items_json, subtotal, discount_type, discount_value, total_amount, warranty_terms, status, order_date, delivery_date, created_at')
+      .eq('device_id', device?.id ?? '')
       .order('created_at', { ascending: false })
       .limit(200);
     setOrders((data as WorkOrder[]) ?? []);
@@ -251,7 +253,8 @@ export default function WorkOrdersScreen() {
   const handleDelete = async () => {
     if (!deleteOrder) return;
     setDeleting(true);
-    await supabase.from('work_orders').delete().eq('id', deleteOrder.id);
+    const device = getDeviceInfo();
+    await supabase.from('work_orders').delete().eq('id', deleteOrder.id).eq('device_id', device?.id ?? '');
     setDeleting(false);
     setDeleteOrder(null);
     fetchOrders();
@@ -312,7 +315,7 @@ export default function WorkOrdersScreen() {
 
     let insError: { message: string } | null = null;
     if (editingId) {
-      const res = await supabase.from('work_orders').update(payload).eq('id', editingId);
+      const res = await supabase.from('work_orders').update(payload).eq('id', editingId).eq('device_id', device?.id ?? '');
       insError = res.error ? { message: res.error.message } : null;
     } else {
       const res = await supabase.from('work_orders').insert(payload);
@@ -858,24 +861,21 @@ function ItemRow({
       const q = query.trim().toLowerCase();
       let data: Product[] | null = null;
       const device = getDeviceInfo();
-      const deviceFilter = device?.id ? `device_id.eq.${device.id},device_id.is.null` : undefined;
       if (q) {
-        let q2 = supabase
+        const res = await supabase
           .from('products')
           .select('id, name, price, stock, category, device_id, created_at')
           .ilike('name', `%${q}%`)
+          .eq('device_id', device?.id ?? '')
           .limit(6);
-        if (deviceFilter) q2 = q2.or(deviceFilter);
-        const res = await q2;
         data = (res.data as Product[]) ?? [];
       } else {
-        let q2 = supabase
+        const res = await supabase
           .from('products')
           .select('id, name, price, stock, category, device_id, created_at')
+          .eq('device_id', device?.id ?? '')
           .order('name')
           .limit(6);
-        if (deviceFilter) q2 = q2.or(deviceFilter);
-        const res = await q2;
         data = (res.data as Product[]) ?? [];
       }
       setProducts(data ?? []);
@@ -1127,26 +1127,14 @@ function PrintPreview({
   const companyAddress = company?.company_address || '';
   const companyPhone = company?.company_phone || '';
   const companyEmail = company?.company_email || '';
-  const dbLogoPath = company?.company_logo_url || '';
-  const logoUrl = dbLogoPath.startsWith('/')
-    ? `${window.location.origin}${dbLogoPath}`
-    : dbLogoPath;
+  const logoUrl = '/images/logo-R&G.jpg' || '';
 
   const handlePrint = () => {
     const node = document.getElementById('os-print-area');
     if (!node) return;
     const win = window.open('', '_blank', 'width=820,height=1160');
     if (!win) return;
-
-    // Trata o caminho para garantir que sempre tenha a barra inicial
-  const logoPath = company?.company_logo_url || '';
-  const formattedLogoUrl = logoPath.startsWith('/') 
-    ? `${window.location.origin}${logoPath}` 
-    : `${window.location.origin}/${logoPath}`;
-
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8">
-      <base href="${window.location.origin}">
-      <title>OS #${String(order.order_number).padStart(4, '0')}</title>
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>OS #${String(order.order_number).padStart(4, '0')}</title>
       <style>
         * { font-family: 'Segoe UI', Roboto, Arial, sans-serif; box-sizing: border-box; }
         body { margin: 0; padding: 24px; color: #0f172a; background: #fff; }
@@ -1159,8 +1147,8 @@ function PrintPreview({
         .company-meta { font-size: 11px; color: #475569; margin-top: 4px; line-height: 1.5; }
         .company-meta span { display: block; }
         .doc-meta { text-align: right; font-size: 11px; color: #64748b; flex-shrink: 0; }
-        .num { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
-        .meta-line { margin-bottom: 2px; }
+        .doc-meta .num { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+        .doc-meta .meta-line { margin-bottom: 2px; }
         .paragraph { margin-top: 20px; padding-top: 14px; border-top: 1px solid #e2e8f0; }
         .para-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #0d9488; margin-bottom: 8px; }
         .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 12px; }
@@ -1187,35 +1175,11 @@ function PrintPreview({
         @media print { body { padding: 0; } }
       </style></head><body>${node.innerHTML}</body></html>`);
     win.document.close();
-    // Força o navegador a esperar a imagem carregar na nova janela antes de abrir a caixa de impressão
-  const imgEl = win.document.querySelector('img.logo-img') as HTMLImageElement | null;
-
-  if (imgEl) {
-    // Se a imagem já estiver carregada em cache
-    if (imgEl.complete) {
-      win.focus();
-      win.print();
-    } else {
-      // Aguarda o evento de carregamento da imagem
-      imgEl.onload = () => {
-        win.focus();
-        win.print();
-      };
-      // Fallback caso a imagem falhe ao carregar
-      imgEl.onerror = () => {
-        win.focus();
-        win.print();
-      };
-    }
-  } else {
     win.focus();
-    win.print();
-  }
-    /*win.focus();
     setTimeout(() => {
       win.print();
       win.close();
-    }, 300);*/
+    }, 300);
   };
 
   return (
