@@ -27,7 +27,7 @@ function AppInner() {
         const { data, error } = await supabase
           .from('authorized_devices')
           .select('*')
-          .eq('id', localDevice.token) // Ou .eq('id', localDevice.id) dependendo do seu schema
+          .eq('id', deviceId) // Ou .eq('id', localDevice.id) dependendo do seu schema
           .single();
 
         if (!error && data) {
