@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Search, Package, Plus, Loader2, AlertTriangle, Edit3, X, Check, AlertCircle,
+  Search, Package, Plus, Loader2, AlertTriangle, Edit3, X, Check, AlertCircle, Trash2,
 } from 'lucide-react';
 import { supabase, type Product } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
@@ -17,6 +17,8 @@ export default function EstoqueScreen() {
   const [editPrice, setEditPrice] = useState('');
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [deleting, setDeleting] = useState<Product | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -47,6 +49,15 @@ export default function EstoqueScreen() {
     setEditing(p);
     setEditStock(String(p.stock));
     setEditPrice(String(p.price));
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setDeleteSaving(true);
+    await supabase.from('products').delete().eq('id', deleting.id);
+    setProducts((prev) => prev.filter((p) => p.id !== deleting.id));
+    setDeleteSaving(false);
+    setDeleting(null);
   };
 
   const saveEdit = async () => {
@@ -195,12 +206,20 @@ export default function EstoqueScreen() {
                             </button>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => startEdit(p)}
-                            className="w-7 h-7 rounded-lg text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition-colors ml-auto"
-                          >
-                            <Edit3 className="w-4 h-4" strokeWidth={2} />
-                          </button>
+                          <div className="flex items-center justify-end gap-1 ml-auto">
+                            <button
+                              onClick={() => startEdit(p)}
+                              className="w-7 h-7 rounded-lg text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition-colors"
+                            >
+                              <Edit3 className="w-4 h-4" strokeWidth={2} />
+                            </button>
+                            <button
+                              onClick={() => setDeleting(p)}
+                              className="w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center justify-center transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" strokeWidth={2} />
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -223,6 +242,42 @@ export default function EstoqueScreen() {
             fetchProducts();
           }}
         />
+      )}
+
+      {deleting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="w-9 h-9 rounded-lg bg-red-100 dark:bg-red-950/40 flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-red-500" strokeWidth={2} />
+              </div>
+              <h3 className="font-semibold text-slate-900 dark:text-white">Excluir produto</h3>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Tem certeza que deseja excluir <span className="font-semibold text-slate-900 dark:text-white">{deleting.name}</span>?
+                Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setDeleting(null)}
+                  disabled={deleteSaving}
+                  className="flex-1 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-60"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={deleteSaving}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-red-500 text-white font-medium text-sm shadow-sm hover:bg-red-600 disabled:opacity-60 transition-all active:scale-[0.98]"
+                >
+                  {deleteSaving ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2.5} /> : <Trash2 className="w-4 h-4" strokeWidth={2.5} />}
+                  {deleteSaving ? 'Excluindo...' : 'Excluir'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
