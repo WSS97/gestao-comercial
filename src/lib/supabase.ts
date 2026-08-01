@@ -30,6 +30,7 @@ export type Product = {
   price: number;
   stock: number;
   category: string;
+  code?: string | null;
   device_id?: string | null;
   created_at: string;
 };

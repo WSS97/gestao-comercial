@@ -23,7 +23,7 @@ export default function EstoqueScreen() {
     const device = getDeviceInfo();
     const { data } = await supabase
       .from('products')
-      .select('id, name, price, stock, category, device_id, created_at')
+      .select('id, name, price, stock, category, code, device_id, created_at')
       .eq('device_id', device?.id ?? '')
       .order('name');
     setProducts((data as Product[]) ?? []);
@@ -34,9 +34,10 @@ export default function EstoqueScreen() {
     fetchProducts();
   }, [fetchProducts]);
 
-  const filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(search.trim().toLowerCase())
-  );
+  const filtered = products.filter((p) => {
+    const q = search.trim().toLowerCase();
+    return p.name.toLowerCase().includes(q) || (p.code ?? '').toLowerCase().includes(q);
+  });
 
   const lowStock = products.filter((p) => p.stock <= 5).length;
   const totalItems = products.reduce((s, p) => s + p.stock, 0);
@@ -133,7 +134,12 @@ export default function EstoqueScreen() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <CategoryIcon category={p.category} size="sm" />
-                          <span className="font-medium text-slate-900 dark:text-white">{p.name}</span>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-slate-900 dark:text-white">{p.name}</span>
+                            {p.code && (
+                              <span className="text-xs text-slate-400 dark:text-slate-500">Código: {p.code}</span>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{p.category}</td>
@@ -230,6 +236,7 @@ function AddProductModal({
   onSaved: () => void;
 }) {
   const [name, setName] = useState('');
+  const [code, setCode] = useState('');
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0] ?? 'Acessórios');
@@ -260,7 +267,7 @@ function AddProductModal({
     const device = getDeviceInfo();
     const { error: insertError } = await supabase
       .from('products')
-      .insert({ name: trimmedName, price: numPrice, stock: numStock, category, device_id: device?.id ?? null });
+      .insert({ name: trimmedName, code: code.trim() || null, price: numPrice, stock: numStock, category, device_id: device?.id ?? null });
     setSaving(false);
 
     if (insertError) {
@@ -298,6 +305,18 @@ function AddProductModal({
               onChange={(e) => setName(e.target.value)}
               placeholder="Ex.: Capa Silicone iPhone 16"
               autoFocus
+              className="w-full px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
+              Código do produto
+            </label>
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="Ex.: SKU-001 (opcional)"
               className="w-full px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal transition-all"
             />
           </div>

@@ -864,7 +864,7 @@ function ItemRow({
       if (q) {
         const res = await supabase
           .from('products')
-          .select('id, name, price, stock, category, device_id, created_at')
+          .select('id, name, price, stock, category, code, device_id, created_at')
           .ilike('name', `%${q}%`)
           .eq('device_id', device?.id ?? '')
           .limit(6);
@@ -872,7 +872,7 @@ function ItemRow({
       } else {
         const res = await supabase
           .from('products')
-          .select('id, name, price, stock, category, device_id, created_at')
+          .select('id, name, price, stock, category, code, device_id, created_at')
           .eq('device_id', device?.id ?? '')
           .order('name')
           .limit(6);

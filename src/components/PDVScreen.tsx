@@ -43,7 +43,7 @@ export default function PDVScreen() {
     const device = getDeviceInfo();
     const { data, error } = await supabase
       .from('products')
-      .select('id, name, price, stock, category, device_id, created_at')
+      .select('id, name, price, stock, category, code, device_id, created_at')
       .eq('device_id', device?.id ?? '')
       .order('name');
     if (error) {
@@ -68,7 +68,7 @@ export default function PDVScreen() {
     const q = search.trim().toLowerCase();
     return products.filter((p) => {
       const matchCat = category === 'all' || p.category === category;
-      const matchSearch = !q || p.name.toLowerCase().includes(q);
+      const matchSearch = !q || p.name.toLowerCase().includes(q) || (p.code ?? '').toLowerCase().includes(q);
       return matchCat && matchSearch;
     });
   }, [products, search, category]);
