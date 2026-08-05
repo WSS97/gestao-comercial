@@ -67,6 +67,17 @@ export type SaleItem = {
 
 export type PaymentMethod = 'PIX' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'DINHEIRO';
 
+export type FinancialTransaction = {
+  id: string;
+  device_id: string | null;
+  type: 'ENTRADA' | 'SAIDA';
+  amount: number;
+  description: string;
+  category: string;
+  transaction_date: string;
+  created_at: string;
+};
+
 export type WorkOrderItem = {
   name: string;
   qty: number;

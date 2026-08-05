@@ -1,9 +1,9 @@
-import { ShoppingCart, Package, LayoutDashboard, Sun, Moon, LogOut, ShieldCheck, FileText } from 'lucide-react';
+import { ShoppingCart, Package, LayoutDashboard, Sun, Moon, LogOut, ShieldCheck, FileText, Wallet } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { getDeviceInfo, clearDeviceToken } from '@/lib/auth';
 import { type AuthorizedDevice } from '@/lib/supabase';
 
-export type Route = 'pdv' | 'estoque' | 'dashboard' | 'os';
+export type Route = 'pdv' | 'estoque' | 'dashboard' | 'os' | 'financeiro';
 
 type NavbarProps = {
   route: Route;
@@ -13,9 +13,10 @@ type NavbarProps = {
 };
 
 const NAV_ITEMS: { id: Route; label: string; icon: typeof ShoppingCart }[] = [
-  { id: 'pdv', label: 'PDV / Caixa', icon: ShoppingCart },
+  { id: 'pdv', label: 'PDV', icon: ShoppingCart },
   { id: 'estoque', label: 'Estoque', icon: Package },
   { id: 'os', label: 'OS / Documentos', icon: FileText },
+  { id: 'financeiro', label: 'Financeiro', icon: Wallet },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
 ];
 

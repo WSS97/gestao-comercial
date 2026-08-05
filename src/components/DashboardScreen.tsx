@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   TrendingUp, ShoppingBag, DollarSign, Receipt, Loader2, Calendar,
   Printer, Ban, Filter, ChevronDown, X, CheckCircle2, XCircle,
+  Wallet, ArrowDownCircle, ArrowUpCircle,
 } from 'lucide-react';
-import { supabase, type Sale, type SaleItem } from '@/lib/supabase';
+import { supabase, type Sale, type SaleItem, type FinancialTransaction } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
 import ReceiptModal, { type ReceiptData } from '@/components/ReceiptModal';
 
@@ -16,7 +17,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   CARTAO_DEBITO: 'Cartão Débito',
 };
 
-type PeriodMode = 'day' | 'month' | 'year' | 'range' | 'all';
+type PeriodMode = 'today' | 'week' | 'month' | 'range' | 'all';
 type PaymentFilter = 'ALL' | 'PIX' | 'DINHEIRO' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO';
 
 function toLocalDateInput(d: Date): string {
@@ -39,6 +40,8 @@ function endOfDay(d: Date): Date {
 
 export default function DashboardScreen() {
   const [allSales, setAllSales] = useState<Sale[]>([]);
+  const [allWorkOrders, setAllWorkOrders] = useState<{ total_amount: number; status: string; created_at: string }[]>([]);
+  const [allTransactions, setAllTransactions] = useState<FinancialTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<PeriodMode>('all');
   const [refDate, setRefDate] = useState<string>(toLocalDateInput(new Date()));
@@ -49,47 +52,61 @@ export default function DashboardScreen() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<Sale | null>(null);
 
-  const fetchSales = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true);
     const device = getDeviceInfo();
-    const { data, error } = await supabase
-      .from('sales')
-    .select('id, device_id, subtotal, discount_type, discount_value, total_amount, payment_method, notes, status, created_at')
-    .eq('device_id', device?.id ?? '') // Filtra pelo ID do dispositivo
-    .order('created_at', { ascending: false })
-    .limit(500);
+    const deviceId = device?.id ?? '';
 
-    if (error) {
-    console.error('Erro ao buscar vendas:', error);
-  }
-  
-    setAllSales((data as Sale[]) ?? []);
+    const [salesRes, txRes] = await Promise.all([
+      supabase
+        .from('sales')
+        .select('id, device_id, subtotal, discount_type, discount_value, total_amount, payment_method, notes, status, created_at')
+        .eq('device_id', deviceId)
+        .order('created_at', { ascending: false })
+        .limit(500),
+      supabase
+        .from('financial_transactions')
+        .select('id, device_id, type, amount, description, category, transaction_date, created_at')
+        .eq('device_id', deviceId)
+        .order('transaction_date', { ascending: false })
+        .limit(500),
+    ]);
+
+    if (salesRes.error) console.error('Erro ao buscar vendas:', salesRes.error);
+    if (txRes.error) console.error('Erro ao buscar transações:', txRes.error);
+
+    setAllSales((salesRes.data as Sale[]) ?? []);
+    setAllTransactions((txRes.data as FinancialTransaction[]) ?? []);
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    fetchSales();
-  }, [fetchSales]);
+    fetchAll();
+  }, [fetchAll]);
 
   // Period range
   const { from, to } = useMemo(() => {
     const now = new Date();
-    if (period === 'day') {
+    if (period === 'today') {
       const d = new Date(refDate + 'T00:00:00');
       return { from: startOfDay(d), to: endOfDay(d) };
+    }
+    if (period === 'week') {
+      const d = new Date(refDate + 'T00:00:00');
+      const day = d.getDay(); // 0 = Sunday
+      const start = new Date(d);
+      start.setDate(d.getDate() - day);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      return { from: start, to: end };
     }
     if (period === 'month') {
       const d = new Date(refDate + 'T00:00:00');
       return {
         from: new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0),
         to: new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999),
-      };
-    }
-    if (period === 'year') {
-      const d = new Date(refDate + 'T00:00:00');
-      return {
-        from: new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0),
-        to: new Date(d.getFullYear(), 11, 31, 23, 59, 59, 999),
       };
     }
     if (period === 'range') {
@@ -100,7 +117,7 @@ export default function DashboardScreen() {
     return { from: new Date(0), to: now };
   }, [period, refDate, rangeStart, rangeEnd]);
 
-  const filtered = useMemo(() => {
+  const filteredSales = useMemo(() => {
     return allSales.filter((s) => {
       const created = new Date(s.created_at);
       if (created < from || created > to) return false;
@@ -109,10 +126,26 @@ export default function DashboardScreen() {
     });
   }, [allSales, from, to, paymentFilter]);
 
-  const completed = filtered.filter((s) => s.status === 'COMPLETED');
-  const cancelled = filtered.filter((s) => s.status === 'CANCELLED');
+  const filteredTransactions = useMemo(() => {
+    return allTransactions.filter((t) => {
+      const d = new Date(t.transaction_date + 'T00:00:00');
+      return d >= from && d <= to;
+    });
+  }, [allTransactions, from, to]);
 
+  const completed = filteredSales.filter((s) => s.status === 'COMPLETED');
+  const cancelled = filteredSales.filter((s) => s.status === 'CANCELLED');
+
+  // Financial metrics
   const totalRevenue = completed.reduce((s, x) => s + Number(x.total_amount), 0);
+  const totalExpenses = filteredTransactions
+    .filter((t) => t.type === 'SAIDA')
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const totalAportes = filteredTransactions
+    .filter((t) => t.type === 'ENTRADA')
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const cashBalance = totalRevenue + totalAportes - totalExpenses;
+
   const cancelledValue = cancelled.reduce((s, x) => s + Number(x.total_amount), 0);
   const avgTicket = completed.length > 0 ? totalRevenue / completed.length : 0;
 
@@ -135,66 +168,59 @@ export default function DashboardScreen() {
   };
 
   const handleCancel = async (sale: Sale) => {
-  setCancellingId(sale.id);
-  try {
-    // 1. Buscar os itens da venda
-    const { data: items, error: itemsError } = await supabase
-      .from('sale_items')
-      .select('product_id, quantity')
-      .eq('sale_id', sale.id);
+    setCancellingId(sale.id);
+    try {
+      const { data: items, error: itemsError } = await supabase
+        .from('sale_items')
+        .select('product_id, quantity')
+        .eq('sale_id', sale.id);
 
-    if (itemsError) throw itemsError;
+      if (itemsError) throw itemsError;
 
-    // 2. Devolver estoque dos produtos
-    if (items && items.length > 0) {
-      for (const it of items) {
-        // Tenta RPC primeiro
-        const { error: rpcError } = await supabase.rpc('increment_product_stock', {
-          p_product_id: it.product_id,
-          p_qty: it.quantity,
-        });
+      if (items && items.length > 0) {
+        for (const it of items) {
+          const { error: rpcError } = await supabase.rpc('increment_product_stock', {
+            p_product_id: it.product_id,
+            p_qty: it.quantity,
+          });
 
-        // Fallback caso a RPC falhe
-        if (rpcError) {
-          const { data: prod } = await supabase
-            .from('products')
-            .select('stock')
-            .eq('id', it.product_id)
-            .maybeSingle();
-
-          if (prod) {
-            const { error: updateStockErr } = await supabase
+          if (rpcError) {
+            const { data: prod } = await supabase
               .from('products')
-              .update({ stock: (prod.stock ?? 0) + it.quantity })
-              .eq('id', it.product_id);
+              .select('stock')
+              .eq('id', it.product_id)
+              .maybeSingle();
 
-            if (updateStockErr) console.error('Erro ao atualizar estoque:', updateStockErr);
+            if (prod) {
+              const { error: updateStockErr } = await supabase
+                .from('products')
+                .update({ stock: (prod.stock ?? 0) + it.quantity })
+                .eq('id', it.product_id);
+
+              if (updateStockErr) console.error('Erro ao atualizar estoque:', updateStockErr);
+            }
           }
         }
       }
+
+      const deviceId = getDeviceInfo()?.id ?? '';
+      const { error: updateSaleError } = await supabase
+        .from('sales')
+        .update({ status: 'CANCELLED' })
+        .eq('id', sale.id)
+        .eq('device_id', deviceId);
+
+      if (updateSaleError) throw updateSaleError;
+
+      await fetchAll();
+      setConfirmCancel(null);
+    } catch (err: any) {
+      console.error('Erro detalhado ao cancelar venda:', err);
+      alert(`Erro ao cancelar venda: ${err.message || 'Verifique o console'}`);
+    } finally {
+      setCancellingId(null);
     }
-
-    // 3. Atualizar o status da venda para CANCELLED
-    const deviceId = getDeviceInfo()?.id ?? '';
-    const { error: updateSaleError } = await supabase
-      .from('sales')
-      .update({ status: 'CANCELLED' })
-      .eq('id', sale.id)
-      .eq('device_id', deviceId);
-
-    if (updateSaleError) throw updateSaleError;
-
-    // Recarrega a lista e fecha o modal
-    await fetchSales();
-    setConfirmCancel(null);
-
-  } catch (err: any) {
-    console.error('Erro detalhado ao cancelar venda:', err);
-    alert(`Erro ao cancelar venda: ${err.message || 'Verifique o console'}`);
-  } finally {
-    setCancellingId(null);
-  }
-};
+  };
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
@@ -206,12 +232,12 @@ export default function DashboardScreen() {
         </div>
         <div className="flex flex-col lg:flex-row gap-3 flex-wrap">
           {/* Period mode */}
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex-wrap">
             {([
               { id: 'all', label: 'Tudo' },
-              { id: 'day', label: 'Dia' },
+              { id: 'today', label: 'Hoje' },
+              { id: 'week', label: '7 dias' },
               { id: 'month', label: 'Mês' },
-              { id: 'year', label: 'Ano' },
               { id: 'range', label: 'Período' },
             ] as { id: PeriodMode; label: string }[]).map((opt) => (
               <button
@@ -229,14 +255,8 @@ export default function DashboardScreen() {
           </div>
 
           {/* Date inputs */}
-          {period === 'day' && (
+          {(period === 'today' || period === 'week' || period === 'month') && (
             <DateInput label="Data" value={refDate} onChange={setRefDate} />
-          )}
-          {period === 'month' && (
-            <MonthInput value={refDate} onChange={setRefDate} />
-          )}
-          {period === 'year' && (
-            <YearInput value={refDate} onChange={setRefDate} />
           )}
           {period === 'range' && (
             <>
@@ -275,17 +295,25 @@ export default function DashboardScreen() {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs - Financial metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi label="Faturamento" value={BRL(totalRevenue)} icon={DollarSign} sub={cancelledValue > 0 ? `${BRL(cancelledValue)} canceladas` : undefined} />
+        <Kpi label="Faturamento Bruto" value={BRL(totalRevenue)} icon={DollarSign} sub={cancelledValue > 0 ? `${BRL(cancelledValue)} canceladas` : undefined} />
+        <Kpi label="Total Saídas" value={BRL(totalExpenses)} icon={ArrowUpCircle} danger />
         <Kpi
-          label="Vendas realizadas"
-          value={String(completed.length)}
-          icon={ShoppingBag}
-          sub={cancelled.length > 0 ? `${cancelled.length} cancelada(s)` : undefined}
+          label="Saldo em Caixa"
+          value={BRL(cashBalance)}
+          icon={Wallet}
+          tone={cashBalance >= 0 ? 'positive' : 'negative'}
         />
-        <Kpi label="Vendas canceladas" value={String(cancelled.length)} icon={XCircle} danger />
         <Kpi label="Ticket Médio" value={BRL(avgTicket)} icon={Receipt} />
+      </div>
+
+      {/* Secondary KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MiniStat label="Vendas realizadas" value={String(completed.length)} icon={ShoppingBag} />
+        <MiniStat label="Vendas canceladas" value={String(cancelled.length)} icon={XCircle} danger />
+        <MiniStat label="Aportes/Entradas" value={BRL(totalAportes)} icon={ArrowDownCircle} positive />
+        <MiniStat label="Transações fin." value={String(filteredTransactions.length)} icon={Wallet} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -321,11 +349,11 @@ export default function DashboardScreen() {
             <div className="flex items-center justify-center py-8 text-slate-400">
               <Loader2 className="w-5 h-5 animate-spin" />
             </div>
-          ) : filtered.length === 0 ? (
+          ) : filteredSales.length === 0 ? (
             <p className="text-sm text-slate-400 py-8 text-center">Nenhuma venda no período selecionado.</p>
           ) : (
             <div className="space-y-2 max-h-80 overflow-y-auto">
-              {filtered.slice(0, 30).map((s) => {
+              {filteredSales.slice(0, 30).map((s) => {
                 const isCancelled = s.status === 'CANCELLED';
                 return (
                   <div
@@ -422,69 +450,107 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function MonthInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const monthVal = value.slice(0, 7);
-  return (
-    <label className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-      <span className="text-xs font-medium">Mês</span>
-      <input
-        type="month"
-        value={monthVal}
-        onChange={(e) => onChange(e.target.value + '-01')}
-        className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand-teal"
-      />
-    </label>
-  );
-}
-
-function YearInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const yearVal = value.slice(0, 4);
-  return (
-    <label className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-      <span className="text-xs font-medium">Ano</span>
-      <input
-        type="number"
-        min={2000}
-        max={2100}
-        value={yearVal}
-        onChange={(e) => onChange(e.target.value + '-01-01')}
-        className="w-24 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand-teal"
-      />
-    </label>
-  );
-}
-
 function Kpi({
   label,
   value,
   icon: Icon,
   sub,
   danger,
+  tone,
 }: {
   label: string;
   value: string;
   icon: typeof DollarSign;
   sub?: string;
   danger?: boolean;
+  tone?: 'positive' | 'negative';
 }) {
+  const isPositive = tone === 'positive';
+  const isNegative = tone === 'negative';
   return (
-    <div className="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-4">
+    <div
+      className={`rounded-2xl border shadow-sm p-4 transition-colors ${
+        isPositive
+          ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50'
+          : isNegative
+            ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50'
+            : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800'
+      }`}
+    >
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
         <div
           className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-            danger
-              ? 'bg-red-100 dark:bg-red-950/40 text-red-500'
-              : 'bg-brand-teal/10 text-brand-teal-dark dark:text-brand-teal-light'
+            isPositive
+              ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+              : isNegative
+                ? 'bg-red-100 dark:bg-red-950/40 text-red-500'
+                : danger
+                  ? 'bg-red-100 dark:bg-red-950/40 text-red-500'
+                  : 'bg-brand-teal/10 text-brand-teal-dark dark:text-brand-teal-light'
           }`}
         >
           <Icon className="w-4 h-4" strokeWidth={2} />
         </div>
       </div>
-      <p className={`text-2xl font-bold ${danger ? 'text-red-500 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
+      <p
+        className={`text-2xl font-bold ${
+          isPositive
+            ? 'text-emerald-600 dark:text-emerald-400'
+            : isNegative
+              ? 'text-red-500 dark:text-red-400'
+              : danger
+                ? 'text-red-500 dark:text-red-400'
+                : 'text-slate-900 dark:text-white'
+        }`}
+      >
         {value}
       </p>
       {sub && <p className="text-xs text-slate-400 mt-0.5">({sub})</p>}
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  icon: Icon,
+  danger,
+  positive,
+}: {
+  label: string;
+  value: string;
+  icon: typeof DollarSign;
+  danger?: boolean;
+  positive?: boolean;
+}) {
+  return (
+    <div className="rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-3 flex items-center gap-3">
+      <div
+        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+          danger
+            ? 'bg-red-100 dark:bg-red-950/40 text-red-500'
+            : positive
+              ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+              : 'bg-brand-teal/10 text-brand-teal-dark dark:text-brand-teal-light'
+        }`}
+      >
+        <Icon className="w-4 h-4" strokeWidth={2} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{label}</p>
+        <p
+          className={`text-sm font-bold ${
+            danger
+              ? 'text-red-500 dark:text-red-400'
+              : positive
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-slate-900 dark:text-white'
+          }`}
+        >
+          {value}
+        </p>
+      </div>
     </div>
   );
 }

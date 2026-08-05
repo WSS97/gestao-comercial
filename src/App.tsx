@@ -6,6 +6,7 @@ import PDVScreen from '@/components/PDVScreen';
 import EstoqueScreen from '@/components/EstoqueScreen';
 import DashboardScreen from '@/components/DashboardScreen';
 import WorkOrdersScreen from '@/components/WorkOrdersScreen';
+import FinanceiroScreen from '@/components/FinanceiroScreen';
 import { isDeviceAuthorized, clearDeviceToken, getDeviceInfo } from '@/lib/auth';
 import { supabase, type AuthorizedDevice } from '@/lib/supabase';
 
@@ -65,6 +66,7 @@ function AppInner() {
         {route === 'estoque' && <EstoqueScreen />}
         {route === 'os' && <WorkOrdersScreen company={company} />}
         {route === 'dashboard' && <DashboardScreen />}
+        {route === 'financeiro' && <FinanceiroScreen />}
       </main>
     </div>
   );
