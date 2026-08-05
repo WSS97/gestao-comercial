@@ -12,7 +12,7 @@ import AdminLockModal from '@/components/AdminLockModal';
 import { isDeviceAuthorized, clearDeviceToken, getDeviceInfo } from '@/lib/auth';
 import { supabase, type AuthorizedDevice } from '@/lib/supabase';
 
-const PROTECTED_ROUTES: Route[] = ['dashboard', 'financeiro'];
+const PROTECTED_ROUTES: Route[] = ['financeiro'];
 
 function AppInner() {
   const [authorized, setAuthorized] = useState(isDeviceAuthorized());

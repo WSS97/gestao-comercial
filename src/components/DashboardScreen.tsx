@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  TrendingUp, ShoppingBag, DollarSign, Receipt, Loader2, Calendar,
+  ShoppingBag, DollarSign, Receipt, Loader2,
   Printer, Ban, Filter, ChevronDown, X, CheckCircle2, XCircle,
-  Wallet, ArrowDownCircle, ArrowUpCircle,
+  EyeOff,
 } from 'lucide-react';
-import { supabase, type Sale, type SaleItem, type FinancialTransaction } from '@/lib/supabase';
+import { supabase, type Sale, type SaleItem } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
+import { useAdminAuth } from '@/context/AdminAuthContext';
+import AdminLockModal from '@/components/AdminLockModal';
 import ReceiptModal, { type ReceiptData } from '@/components/ReceiptModal';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -39,9 +41,8 @@ function endOfDay(d: Date): Date {
 }
 
 export default function DashboardScreen() {
+  const { hasSenha, isAdminUnlocked } = useAdminAuth();
   const [allSales, setAllSales] = useState<Sale[]>([]);
-  const [allWorkOrders, setAllWorkOrders] = useState<{ total_amount: number; status: string; created_at: string }[]>([]);
-  const [allTransactions, setAllTransactions] = useState<FinancialTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<PeriodMode>('all');
   const [refDate, setRefDate] = useState<string>(toLocalDateInput(new Date()));
@@ -51,32 +52,25 @@ export default function DashboardScreen() {
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<Sale | null>(null);
+  const [lockModal, setLockModal] = useState<{ message: string; onUnlock: () => void } | null>(null);
+
+  const metricsLocked = hasSenha && !isAdminUnlocked;
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     const device = getDeviceInfo();
     const deviceId = device?.id ?? '';
 
-    const [salesRes, txRes] = await Promise.all([
-      supabase
-        .from('sales')
-        .select('id, device_id, subtotal, discount_type, discount_value, total_amount, payment_method, notes, status, created_at')
-        .eq('device_id', deviceId)
-        .order('created_at', { ascending: false })
-        .limit(500),
-      supabase
-        .from('financial_transactions')
-        .select('id, device_id, type, amount, description, category, transaction_date, created_at')
-        .eq('device_id', deviceId)
-        .order('transaction_date', { ascending: false })
-        .limit(500),
-    ]);
+    const { data: salesData, error: salesError } = await supabase
+      .from('sales')
+      .select('id, device_id, subtotal, discount_type, discount_value, total_amount, payment_method, notes, status, created_at')
+      .eq('device_id', deviceId)
+      .order('created_at', { ascending: false })
+      .limit(500);
 
-    if (salesRes.error) console.error('Erro ao buscar vendas:', salesRes.error);
-    if (txRes.error) console.error('Erro ao buscar transações:', txRes.error);
+    if (salesError) console.error('Erro ao buscar vendas:', salesError);
 
-    setAllSales((salesRes.data as Sale[]) ?? []);
-    setAllTransactions((txRes.data as FinancialTransaction[]) ?? []);
+    setAllSales((salesData as Sale[]) ?? []);
     setLoading(false);
   }, []);
 
@@ -126,26 +120,11 @@ export default function DashboardScreen() {
     });
   }, [allSales, from, to, paymentFilter]);
 
-  const filteredTransactions = useMemo(() => {
-    return allTransactions.filter((t) => {
-      const d = new Date(t.transaction_date + 'T00:00:00');
-      return d >= from && d <= to;
-    });
-  }, [allTransactions, from, to]);
-
   const completed = filteredSales.filter((s) => s.status === 'COMPLETED');
   const cancelled = filteredSales.filter((s) => s.status === 'CANCELLED');
 
-  // Financial metrics
+  // Sales metrics
   const totalRevenue = completed.reduce((s, x) => s + Number(x.total_amount), 0);
-  const totalExpenses = filteredTransactions
-    .filter((t) => t.type === 'SAIDA')
-    .reduce((s, t) => s + Number(t.amount), 0);
-  const totalAportes = filteredTransactions
-    .filter((t) => t.type === 'ENTRADA')
-    .reduce((s, t) => s + Number(t.amount), 0);
-  const cashBalance = totalRevenue + totalAportes - totalExpenses;
-
   const cancelledValue = cancelled.reduce((s, x) => s + Number(x.total_amount), 0);
   const avgTicket = completed.length > 0 ? totalRevenue / completed.length : 0;
 
@@ -168,6 +147,16 @@ export default function DashboardScreen() {
   };
 
   const handleCancel = async (sale: Sale) => {
+    if (metricsLocked) {
+      setConfirmCancel(null);
+      setLockModal({
+        message: 'Digite a senha do administrador para autorizar o cancelamento desta venda.',
+        onUnlock: () => {
+          setConfirmCancel(sale);
+        },
+      });
+      return;
+    }
     setCancellingId(sale.id);
     try {
       const { data: items, error: itemsError } = await supabase
@@ -295,25 +284,31 @@ export default function DashboardScreen() {
         </div>
       </div>
 
-      {/* KPIs - Financial metrics */}
+      {/* KPIs - Sales metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi label="Faturamento Bruto" value={BRL(totalRevenue)} icon={DollarSign} sub={cancelledValue > 0 ? `${BRL(cancelledValue)} canceladas` : undefined} />
-        <Kpi label="Total Saídas" value={BRL(totalExpenses)} icon={ArrowUpCircle} danger />
         <Kpi
-          label="Saldo em Caixa"
-          value={BRL(cashBalance)}
-          icon={Wallet}
-          tone={cashBalance >= 0 ? 'positive' : 'negative'}
+          label="Faturamento Bruto"
+          value={metricsLocked ? 'R$ ****' : BRL(totalRevenue)}
+          icon={DollarSign}
+          sub={cancelledValue > 0 ? `${BRL(cancelledValue)} canceladas` : undefined}
+          hidden={metricsLocked}
+          onReveal={() => setLockModal({
+            message: 'Digite a senha do administrador para visualizar as métricas de faturamento.',
+            onUnlock: () => {},
+          })}
         />
-        <Kpi label="Ticket Médio" value={BRL(avgTicket)} icon={Receipt} />
-      </div>
-
-      {/* Secondary KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MiniStat label="Vendas realizadas" value={String(completed.length)} icon={ShoppingBag} />
-        <MiniStat label="Vendas canceladas" value={String(cancelled.length)} icon={XCircle} danger />
-        <MiniStat label="Aportes/Entradas" value={BRL(totalAportes)} icon={ArrowDownCircle} positive />
-        <MiniStat label="Transações fin." value={String(filteredTransactions.length)} icon={Wallet} />
+        <Kpi
+          label="Ticket Médio"
+          value={metricsLocked ? 'R$ ****' : BRL(avgTicket)}
+          icon={Receipt}
+          hidden={metricsLocked}
+          onReveal={() => setLockModal({
+            message: 'Digite a senha do administrador para visualizar as métricas de faturamento.',
+            onUnlock: () => {},
+          })}
+        />
+        <Kpi label="Vendas Realizadas" value={String(completed.length)} icon={ShoppingBag} />
+        <Kpi label="Vendas Canceladas" value={String(cancelled.length)} icon={XCircle} danger />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -432,6 +427,15 @@ export default function DashboardScreen() {
           loading={cancellingId === confirmCancel.id}
         />
       )}
+
+      {lockModal && (
+        <AdminLockModal
+          viewName="Dashboard"
+          message={lockModal.message}
+          onClose={() => setLockModal(null)}
+          onUnlock={lockModal.onUnlock}
+        />
+      )}
     </div>
   );
 }
@@ -457,6 +461,8 @@ function Kpi({
   sub,
   danger,
   tone,
+  hidden,
+  onReveal,
 }: {
   label: string;
   value: string;
@@ -464,6 +470,8 @@ function Kpi({
   sub?: string;
   danger?: boolean;
   tone?: 'positive' | 'negative';
+  hidden?: boolean;
+  onReveal?: () => void;
 }) {
   const isPositive = tone === 'positive';
   const isNegative = tone === 'negative';
@@ -493,64 +501,31 @@ function Kpi({
           <Icon className="w-4 h-4" strokeWidth={2} />
         </div>
       </div>
-      <p
-        className={`text-2xl font-bold ${
-          isPositive
-            ? 'text-emerald-600 dark:text-emerald-400'
-            : isNegative
-              ? 'text-red-500 dark:text-red-400'
-              : danger
-                ? 'text-red-500 dark:text-red-400'
-                : 'text-slate-900 dark:text-white'
-        }`}
-      >
-        {value}
-      </p>
-      {sub && <p className="text-xs text-slate-400 mt-0.5">({sub})</p>}
-    </div>
-  );
-}
-
-function MiniStat({
-  label,
-  value,
-  icon: Icon,
-  danger,
-  positive,
-}: {
-  label: string;
-  value: string;
-  icon: typeof DollarSign;
-  danger?: boolean;
-  positive?: boolean;
-}) {
-  return (
-    <div className="rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-3 flex items-center gap-3">
-      <div
-        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-          danger
-            ? 'bg-red-100 dark:bg-red-950/40 text-red-500'
-            : positive
-              ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
-              : 'bg-brand-teal/10 text-brand-teal-dark dark:text-brand-teal-light'
-        }`}
-      >
-        <Icon className="w-4 h-4" strokeWidth={2} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{label}</p>
+      <div className="flex items-center gap-2">
         <p
-          className={`text-sm font-bold ${
-            danger
-              ? 'text-red-500 dark:text-red-400'
-              : positive
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : 'text-slate-900 dark:text-white'
+          className={`text-2xl font-bold ${
+            isPositive
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : isNegative
+                ? 'text-red-500 dark:text-red-400'
+                : danger
+                  ? 'text-red-500 dark:text-red-400'
+                  : 'text-slate-900 dark:text-white'
           }`}
         >
           {value}
         </p>
+        {hidden && (
+          <button
+            onClick={onReveal}
+            title="Clique para digitar a senha e visualizar"
+            className="text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light transition-colors"
+          >
+            <EyeOff className="w-4 h-4" strokeWidth={2} />
+          </button>
+        )}
       </div>
+      {sub && <p className="text-xs text-slate-400 mt-0.5">({sub})</p>}
     </div>
   );
 }

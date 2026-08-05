@@ -4,10 +4,12 @@ import { useAdminAuth } from '@/context/AdminAuthContext';
 
 type Props = {
   viewName: string;
+  message?: string;
   onClose: () => void;
+  onUnlock?: () => void;
 };
 
-export default function AdminLockModal({ viewName, onClose }: Props) {
+export default function AdminLockModal({ viewName, message, onClose, onUnlock }: Props) {
   const { senhaAdmin, unlock } = useAdminAuth();
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
@@ -25,6 +27,7 @@ export default function AdminLockModal({ viewName, onClose }: Props) {
         unlock(remember);
         setChecking(false);
         onClose();
+        onUnlock?.();
       } else {
         setError('Senha incorreta. Tente novamente.');
         setChecking(false);
@@ -58,7 +61,7 @@ export default function AdminLockModal({ viewName, onClose }: Props) {
         {/* Body */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            Digite a senha do administrador para acessar este menu.
+            {message ?? 'Digite a senha do administrador para acessar este menu.'}
           </p>
 
           <div>
