@@ -1,8 +1,10 @@
-import { ShoppingCart, Package, LayoutDashboard, Sun, Moon, LogOut, ShieldCheck, FileText, Wallet, Lock } from 'lucide-react';
+import { useState } from 'react';
+import { ShoppingCart, Package, LayoutDashboard, Sun, Moon, LogOut, ShieldCheck, FileText, Wallet, Lock, Settings } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import { getDeviceInfo, clearDeviceToken } from '@/lib/auth';
 import { type AuthorizedDevice } from '@/lib/supabase';
+import SecuritySettingsModal from '@/components/SecuritySettingsModal';
 
 export type Route = 'pdv' | 'estoque' | 'dashboard' | 'os' | 'financeiro';
 
@@ -25,6 +27,7 @@ export default function Navbar({ route, onNavigate, onDisconnect, company }: Nav
   const { theme, toggleTheme } = useTheme();
   const { hasSenha, isAdminUnlocked, lock } = useAdminAuth();
   const device = getDeviceInfo();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 transition-colors">
@@ -90,6 +93,14 @@ export default function Navbar({ route, onNavigate, onDisconnect, company }: Nav
             {theme === 'dark' ? <Sun className="w-5 h-5" strokeWidth={2} /> : <Moon className="w-5 h-5" strokeWidth={2} />}
           </button>
           <button
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Configurações de Segurança"
+            title="Configurações de Segurança"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <Settings className="w-5 h-5" strokeWidth={2} />
+          </button>
+          <button
             onClick={onDisconnect}
             className="flex items-center gap-2 px-3 h-9 rounded-lg text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 border border-transparent hover:border-red-200 dark:hover:border-red-900/60 transition-all"
           >
@@ -126,6 +137,8 @@ export default function Navbar({ route, onNavigate, onDisconnect, company }: Nav
           {/* device info available globally via auth lib */}
         </div>
       )}
+
+      {settingsOpen && <SecuritySettingsModal onClose={() => setSettingsOpen(false)} />}
     </header>
   );
 }
