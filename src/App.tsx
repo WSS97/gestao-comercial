@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { AdminAuthProvider, useAdminAuth } from '@/context/AdminAuthContext';
 import ActivationScreen from '@/components/ActivationScreen';
 import Navbar, { type Route } from '@/components/Navbar';
 import PDVScreen from '@/components/PDVScreen';
@@ -7,13 +8,19 @@ import EstoqueScreen from '@/components/EstoqueScreen';
 import DashboardScreen from '@/components/DashboardScreen';
 import WorkOrdersScreen from '@/components/WorkOrdersScreen';
 import FinanceiroScreen from '@/components/FinanceiroScreen';
+import AdminLockModal from '@/components/AdminLockModal';
 import { isDeviceAuthorized, clearDeviceToken, getDeviceInfo } from '@/lib/auth';
 import { supabase, type AuthorizedDevice } from '@/lib/supabase';
+
+const PROTECTED_ROUTES: Route[] = ['dashboard', 'financeiro'];
 
 function AppInner() {
   const [authorized, setAuthorized] = useState(isDeviceAuthorized());
   const [route, setRoute] = useState<Route>('pdv');
   const [company, setCompany] = useState<AuthorizedDevice | null>(null);
+  const { hasSenha, isAdminUnlocked, setSenhaAdmin, clearAll } = useAdminAuth();
+  const [lockOpen, setLockOpen] = useState(false);
+  const [pendingRoute, setPendingRoute] = useState<Route | null>(null);
 
   useEffect(() => {
     const isAuth = isDeviceAuthorized();
@@ -24,12 +31,9 @@ function AppInner() {
         const localDevice = getDeviceInfo();
         if (!localDevice) return;
 
-        // 1. Define de imediato usando o cache local
         setCompany(localDevice);
 
-        // 2. Atualiza em segundo plano via Supabase
         const deviceId = localDevice.id;
-
         if (deviceId) {
           const { data, error } = await supabase
             .from('authorized_devices')
@@ -39,20 +43,47 @@ function AppInner() {
 
           if (!error && data) {
             setCompany(data);
+            setSenhaAdmin(data.senha_admin ?? null);
           }
         }
       }
-
       loadCompanyData();
     }
-  }, [authorized]);
+  }, [authorized, setSenhaAdmin]);
 
   const handleDisconnect = () => {
     clearDeviceToken();
+    clearAll();
     setAuthorized(false);
     setCompany(null);
     setRoute('pdv');
+    setLockOpen(false);
+    setPendingRoute(null);
   };
+
+  const handleNavigate = (r: Route) => {
+    if (PROTECTED_ROUTES.includes(r) && hasSenha && !isAdminUnlocked) {
+      setPendingRoute(r);
+      setLockOpen(true);
+      return;
+    }
+    setRoute(r);
+  };
+
+  const handleUnlockClose = () => {
+    setLockOpen(false);
+    setPendingRoute(null);
+  };
+
+  useEffect(() => {
+    if (lockOpen && isAdminUnlocked) {
+      setLockOpen(false);
+      if (pendingRoute) {
+        setRoute(pendingRoute);
+        setPendingRoute(null);
+      }
+    }
+  }, [lockOpen, isAdminUnlocked, pendingRoute]);
 
   if (!authorized) {
     return <ActivationScreen onActivated={() => setAuthorized(true)} />;
@@ -60,7 +91,12 @@ function AppInner() {
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 transition-colors">
-      <Navbar route={route} onNavigate={setRoute} onDisconnect={handleDisconnect} company={company} />
+      <Navbar
+        route={route}
+        onNavigate={handleNavigate}
+        onDisconnect={handleDisconnect}
+        company={company}
+      />
       <main>
         {route === 'pdv' && <PDVScreen />}
         {route === 'estoque' && <EstoqueScreen />}
@@ -68,6 +104,13 @@ function AppInner() {
         {route === 'dashboard' && <DashboardScreen />}
         {route === 'financeiro' && <FinanceiroScreen />}
       </main>
+
+      {lockOpen && (
+        <AdminLockModal
+          viewName={pendingRoute === 'dashboard' ? 'Dashboard' : 'Financeiro'}
+          onClose={handleUnlockClose}
+        />
+      )}
     </div>
   );
 }
@@ -75,7 +118,9 @@ function AppInner() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppInner />
+      <AdminAuthProvider>
+        <AppInner />
+      </AdminAuthProvider>
     </ThemeProvider>
   );
 }

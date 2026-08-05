@@ -1,5 +1,6 @@
-import { ShoppingCart, Package, LayoutDashboard, Sun, Moon, LogOut, ShieldCheck, FileText, Wallet } from 'lucide-react';
+import { ShoppingCart, Package, LayoutDashboard, Sun, Moon, LogOut, ShieldCheck, FileText, Wallet, Lock } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { useAdminAuth } from '@/context/AdminAuthContext';
 import { getDeviceInfo, clearDeviceToken } from '@/lib/auth';
 import { type AuthorizedDevice } from '@/lib/supabase';
 
@@ -22,6 +23,7 @@ const NAV_ITEMS: { id: Route; label: string; icon: typeof ShoppingCart }[] = [
 
 export default function Navbar({ route, onNavigate, onDisconnect, company }: NavbarProps) {
   const { theme, toggleTheme } = useTheme();
+  const { hasSenha, isAdminUnlocked, lock } = useAdminAuth();
   const device = getDeviceInfo();
 
   return (
@@ -69,6 +71,17 @@ export default function Navbar({ route, onNavigate, onDisconnect, company }: Nav
 
         {/* Right actions */}
         <div className="flex items-center gap-2">
+          {hasSenha && isAdminUnlocked && (
+            <button
+              onClick={lock}
+              title="Bloquear Painel"
+              aria-label="Bloquear Painel"
+              className="flex items-center gap-1.5 px-2.5 h-9 rounded-lg text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/60 transition-all"
+            >
+              <Lock className="w-3.5 h-3.5" strokeWidth={2.2} />
+              <span className="hidden sm:inline">Bloquear Painel</span>
+            </button>
+          )}
           <button
             onClick={toggleTheme}
             aria-label="Alternar tema"

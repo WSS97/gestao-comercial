@@ -22,6 +22,7 @@ export type AuthorizedDevice = {
   company_email?: string | null;
   company_address?: string | null;
   company_logo_url?: string | null;
+  senha_admin?: string | null;
 };
 
 export type Product = {
