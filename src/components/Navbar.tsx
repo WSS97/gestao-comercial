@@ -30,6 +30,7 @@ export default function Navbar({ route, onNavigate, onDisconnect, company }: Nav
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
+    <>
     <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 transition-colors">
       <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         {/* Brand + status */}
@@ -138,7 +139,9 @@ export default function Navbar({ route, onNavigate, onDisconnect, company }: Nav
         </div>
       )}
 
-      {settingsOpen && <SecuritySettingsModal onClose={() => setSettingsOpen(false)} />}
     </header>
+
+      {settingsOpen && <SecuritySettingsModal onClose={() => setSettingsOpen(false)} />}
+    </>
   );
 }

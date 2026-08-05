@@ -93,10 +93,10 @@ export default function FinanceiroScreen() {
     return parseFloat(cleaned) || 0;
   };
 
-  const formatAmount = (raw: string): string => {
-    const num = parseAmount(raw);
-    if (num === 0 && raw.trim() === '') return '';
-    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const handleAmountChange = (raw: string) => {
+    // allow only digits, comma and dot
+    const cleaned = raw.replace(/[^0-9,.]/g, '');
+    setAmount(cleaned);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -218,7 +218,7 @@ export default function FinanceiroScreen() {
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Valor (R$)</label>
               <input
                 value={amount}
-                onChange={(e) => setAmount(formatAmount(e.target.value))}
+                onChange={(e) => handleAmountChange(e.target.value)}
                 placeholder="0,00"
                 inputMode="decimal"
                 className="w-full px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal transition-all"
