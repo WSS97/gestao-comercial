@@ -218,7 +218,7 @@ export default function FinanceiroScreen() {
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Valor (R$)</label>
               <input
                 value={amount}
-                /*onChange={(e) => setAmount(formatAmount(e.target.value))}*/
+                onChange={(e) => setAmount(formatAmount(e.target.value))}
                 placeholder="0,00"
                 inputMode="decimal"
                 className="w-full px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal transition-all"
