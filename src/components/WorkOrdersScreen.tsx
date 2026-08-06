@@ -1183,8 +1183,8 @@ function PrintPreview({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn overflow-y-auto">
-      <div className="w-full max-w-3xl my-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16 sm:pt-12 bg-black/50 backdrop-blur-sm animate-fadeIn overflow-y-auto">
+      <div className="w-full max-w-3xl mb-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
         {/* Top bar */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1208,7 +1208,7 @@ function PrintPreview({
         </div>
 
         {/* Printable area */}
-        <div id="os-print-area" className="p-6 sm:p-8 bg-white text-slate-900">
+        <div id="os-print-area" className="p-6 sm:p-8 bg-white text-slate-900 max-h-[70vh] sm:max-h-none overflow-y-auto">
           <div className="doc">
             {/* Header com Logo e Dados de Emissor Completo */}
             <div className="header">
