@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Wallet, ArrowDownCircle, ArrowUpCircle, Loader2, Trash2, Plus,
-  Filter, RotateCcw, CalendarDays, CalendarRange, Calendar,
+  Filter, RotateCcw, CalendarDays, CalendarRange, Calendar, ShoppingBag,
 } from 'lucide-react';
 import { supabase, type FinancialTransaction, type Sale } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
@@ -174,7 +174,6 @@ export default function FinanceiroScreen() {
 
   const aportesEntradas = totalEntradas;
   const totalIncome = salesRevenue + totalEntradas;
-  const manualSaldo = totalEntradas - totalSaidas;
 
   // Saldo em Caixa é cumulativo — contabiliza todo o histórico, ignorando o filtro de período
   const allTimeSalesRevenue = useMemo(
@@ -434,22 +433,28 @@ export default function FinanceiroScreen() {
             tone="positive"
           />
           <SummaryCard
-            label="Entrada (mês)"
+            label="Vendas"
+            value={BRL(salesRevenue)}
+            icon={ShoppingBag}
+            tone="positive"
+          />
+          <SummaryCard
+            label="Entrada Total"
             value={BRL(totalIncome)}
             icon={ArrowDownCircle}
             tone="positive"
           />
           <SummaryCard
-            label="Saída (mês)"
+            label="Saída"
             value={BRL(totalSaidas)}
             icon={ArrowUpCircle}
             tone="negative"
           />
           <SummaryCard
-            label="Saldo (mês)"
-            value={BRL(manualSaldo)}
+            label="Resumo"
+            value={BRL(totalIncome - totalSaidas)}
             icon={Wallet}
-            tone={manualSaldo >= 0 ? 'positive' : 'negative'}
+            tone={(totalIncome - totalSaidas) >= 0 ? 'positive' : 'negative'}
           />
         </div>
       </div>

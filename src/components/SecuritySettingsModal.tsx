@@ -50,13 +50,14 @@ export default function SecuritySettingsModal({ onClose }: Props) {
       return;
     }
 
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from('authorized_devices')
       .update({ senha_admin: newPassword })
-      .eq('id', deviceId);
+      .eq('id', deviceId)
+      .select('id');
 
-    if (updateError) {
-      setError('Erro ao salvar a senha. Tente novamente.');
+    if (updateError || !updatedRows || updatedRows.length === 0) {
+      setError('Erro ao salvar a senha no banco de dados. Tente novamente.');
       setSaving(false);
       return;
     }
