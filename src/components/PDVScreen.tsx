@@ -210,9 +210,9 @@ export default function PDVScreen() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 p-4 sm:p-6 h-[calc(100vh-4rem)]">
+    <div className="flex flex-col lg:flex-row gap-4 p-4 sm:p-6 lg:h-[calc(100vh-4rem)]">
       {/* Products panel */}
-      <div className="flex-1 flex flex-col min-h-0 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-[70vh] lg:min-h-0 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" strokeWidth={2} />
@@ -287,7 +287,7 @@ export default function PDVScreen() {
       </div>
 
       {/* Cart panel */}
-      <div className="lg:w-[380px] xl:w-[420px] flex flex-col min-h-0 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="lg:w-[380px] xl:w-[420px] flex flex-col min-h-0 lg:min-h-0 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         {/* Cart header */}
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
