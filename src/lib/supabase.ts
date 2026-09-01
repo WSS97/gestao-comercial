@@ -24,6 +24,9 @@ export type AuthorizedDevice = {
   company_logo_url?: string | null;
   senha_admin?: string | null;
   is_read_only?: boolean | null;
+  terms_accepted?: boolean | null;
+  terms_accepted_at?: string | null;
+  terms_version?: string | null;
 };
 
 export type Product = {
