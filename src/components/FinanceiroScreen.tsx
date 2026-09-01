@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { supabase, type FinancialTransaction, type Sale } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
+import { isDeviceReadOnlyNow } from '@/lib/readonly';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -80,7 +81,7 @@ function formatPeriodLabel(mode: FilterMode, range: { start: Date; end: Date }):
   return range.start.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 }
 
-export default function FinanceiroScreen() {
+export default function FinanceiroScreen({ readOnly }: { readOnly?: boolean }) {
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
@@ -261,6 +262,11 @@ export default function FinanceiroScreen() {
 
     setSubmitting(true);
     const device = getDeviceInfo();
+    if (device?.id && await isDeviceReadOnlyNow(device.id)) {
+      setFormError('Modo de leitura ativo. Movimentações estão suspensas.');
+      setSubmitting(false);
+      return;
+    }
     const { error } = await supabase.from('financial_transactions').insert({
       device_id: device?.id ?? null,
       type,
@@ -286,7 +292,13 @@ export default function FinanceiroScreen() {
   };
 
   const handleDelete = async (id: string) => {
+    if (readOnly) return;
     setDeletingId(id);
+    const device = getDeviceInfo();
+    if (device?.id && await isDeviceReadOnlyNow(device.id)) {
+      setDeletingId(null);
+      return;
+    }
     const { error } = await supabase.from('financial_transactions').delete().eq('id', id);
     if (error) {
       console.error('Erro ao excluir transação:', error);
@@ -539,7 +551,7 @@ export default function FinanceiroScreen() {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || readOnly}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-brand-teal text-white font-medium text-sm shadow-sm hover:bg-brand-teal-dark disabled:opacity-60 transition-all active:scale-[0.98]"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2.5} /> : <Plus className="w-4 h-4" strokeWidth={2.5} />}
@@ -622,7 +634,7 @@ export default function FinanceiroScreen() {
                         {t.deletable ? (
                           <button
                             onClick={() => handleDelete(t.id)}
-                            disabled={deletingId === t.id}
+                            disabled={deletingId === t.id || readOnly}
                             title="Excluir"
                             className="w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center justify-center transition-colors disabled:opacity-60 ml-auto"
                           >

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { supabase, type Product, type PaymentMethod, type SaleItem, type Sale } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
+import { isDeviceReadOnlyNow } from '@/lib/readonly';
 import { CategoryIcon } from '@/components/CategoryIcon';
 import ReceiptModal, { type ReceiptData } from '@/components/ReceiptModal';
 
@@ -22,7 +23,7 @@ const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: typeof CreditCa
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-export default function PDVScreen() {
+export default function PDVScreen({ readOnly }: { readOnly?: boolean }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -133,10 +134,16 @@ export default function PDVScreen() {
   };
 
   const finalizeSale = async () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || readOnly) return;
     setSubmitting(true);
     setError('');
     const device = getDeviceInfo();
+
+    if (device?.id && await isDeviceReadOnlyNow(device.id)) {
+      setError('Modo de leitura ativo. Vendas estão suspensas.');
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const { data: sale, error: saleError } = await supabase
@@ -494,7 +501,7 @@ export default function PDVScreen() {
 
           <button
             onClick={finalizeSale}
-            disabled={cart.length === 0 || submitting}
+            disabled={cart.length === 0 || submitting || readOnly}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-brand-teal-light to-brand-teal-dark text-white font-semibold text-sm shadow-lg shadow-brand-teal/25 hover:shadow-brand-teal/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
           >
             {submitting ? (

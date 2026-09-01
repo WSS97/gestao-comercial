@@ -23,6 +23,7 @@ export type AuthorizedDevice = {
   company_address?: string | null;
   company_logo_url?: string | null;
   senha_admin?: string | null;
+  is_read_only?: boolean | null;
 };
 
 export type Product = {

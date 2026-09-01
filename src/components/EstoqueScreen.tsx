@@ -4,11 +4,12 @@ import {
 } from 'lucide-react';
 import { supabase, type Product } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
+import { isDeviceReadOnlyNow } from '@/lib/readonly';
 import { CategoryIcon, CATEGORIES } from '@/components/CategoryIcon';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-export default function EstoqueScreen() {
+export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -52,8 +53,14 @@ export default function EstoqueScreen() {
   };
 
   const confirmDelete = async () => {
-    if (!deleting) return;
+    if (!deleting || readOnly) return;
     setDeleteSaving(true);
+    const device = getDeviceInfo();
+    if (device?.id && await isDeviceReadOnlyNow(device.id)) {
+      setDeleteSaving(false);
+      setDeleting(null);
+      return;
+    }
     await supabase.from('products').delete().eq('id', deleting.id);
     setProducts((prev) => prev.filter((p) => p.id !== deleting.id));
     setDeleteSaving(false);
@@ -61,8 +68,14 @@ export default function EstoqueScreen() {
   };
 
   const saveEdit = async () => {
-    if (!editing) return;
+    if (!editing || readOnly) return;
     setSaving(true);
+    const device = getDeviceInfo();
+    if (device?.id && await isDeviceReadOnlyNow(device.id)) {
+      setSaving(false);
+      setEditing(null);
+      return;
+    }
     const newStock = parseInt(editStock, 10);
     const newPrice = parseFloat(editPrice.replace(',', '.'));
     if (Number.isNaN(newStock) || Number.isNaN(newPrice)) {
@@ -107,7 +120,8 @@ export default function EstoqueScreen() {
         </div>
         <button
           onClick={() => setShowAdd(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand-teal text-white font-medium text-sm shadow-sm hover:bg-brand-teal-dark transition-all active:scale-[0.98] whitespace-nowrap"
+          disabled={readOnly}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand-teal text-white font-medium text-sm shadow-sm hover:bg-brand-teal-dark transition-all active:scale-[0.98] whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="w-4 h-4" strokeWidth={2.5} />
           Cadastrar Produto
@@ -209,13 +223,15 @@ export default function EstoqueScreen() {
                           <div className="flex items-center justify-end gap-1 ml-auto">
                             <button
                               onClick={() => startEdit(p)}
-                              className="w-7 h-7 rounded-lg text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition-colors"
+                              disabled={readOnly}
+                              className="w-7 h-7 rounded-lg text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               <Edit3 className="w-4 h-4" strokeWidth={2} />
                             </button>
                             <button
                               onClick={() => setDeleting(p)}
-                              className="w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center justify-center transition-colors"
+                              disabled={readOnly}
+                              className="w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               <Trash2 className="w-4 h-4" strokeWidth={2} />
                             </button>
