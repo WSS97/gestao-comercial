@@ -14,8 +14,6 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<Product | null>(null);
-  const [editStock, setEditStock] = useState('');
-  const [editPrice, setEditPrice] = useState('');
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [deleting, setDeleting] = useState<Product | null>(null);
@@ -48,8 +46,6 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
 
   const startEdit = (p: Product) => {
     setEditing(p);
-    setEditStock(String(p.stock));
-    setEditPrice(String(p.price));
   };
 
   const confirmDelete = async () => {
@@ -67,7 +63,7 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
     setDeleting(null);
   };
 
-  const saveEdit = async () => {
+  const saveEdit = async (data: { name: string; category: string; price: string; stock: string }) => {
     if (!editing || readOnly) return;
     setSaving(true);
     const device = getDeviceInfo();
@@ -76,18 +72,20 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
       setEditing(null);
       return;
     }
-    const newStock = parseInt(editStock, 10);
-    const newPrice = parseFloat(editPrice.replace(',', '.'));
-    if (Number.isNaN(newStock) || Number.isNaN(newPrice)) {
+    const newName = data.name.trim();
+    const newCategory = data.category;
+    const newStock = parseInt(data.stock, 10);
+    const newPrice = parseFloat(data.price.replace(',', '.'));
+    if (!newName || Number.isNaN(newStock) || Number.isNaN(newPrice)) {
       setSaving(false);
       return;
     }
     await supabase
       .from('products')
-      .update({ stock: newStock, price: newPrice })
+      .update({ name: newName, category: newCategory, stock: newStock, price: newPrice })
       .eq('id', editing.id);
     setProducts((prev) =>
-      prev.map((p) => (p.id === editing.id ? { ...p, stock: newStock, price: newPrice } : p))
+      prev.map((p) => (p.id === editing.id ? { ...p, name: newName, category: newCategory, stock: newStock, price: newPrice } : p))
     );
     setEditing(null);
     setSaving(false);
@@ -150,7 +148,6 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
               <tbody>
                 {filtered.map((p) => {
                   const low = p.stock <= 5;
-                  const isEditing = editing?.id === p.id;
                   return (
                     <tr
                       key={p.id}
@@ -169,74 +166,40 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
                       </td>
                       <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{p.category}</td>
                       <td className="px-4 py-3 text-right text-slate-900 dark:text-white">
-                        {isEditing ? (
-                          <input
-                            value={editPrice}
-                            onChange={(e) => setEditPrice(e.target.value)}
-                            className="w-24 px-2 py-1 text-right rounded border border-brand-teal bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
-                          />
-                        ) : (
-                          BRL(p.price)
-                        )}
+                        {BRL(p.price)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {isEditing ? (
-                          <input
-                            value={editStock}
-                            onChange={(e) => setEditStock(e.target.value)}
-                            className="w-16 px-2 py-1 text-right rounded border border-brand-teal bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
-                          />
-                        ) : (
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                              low
-                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                            }`}
-                          >
-                            {low && <AlertTriangle className="w-3 h-3" />}
-                            {p.stock} un
-                          </span>
-                        )}
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                            low
+                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                          }`}
+                        >
+                          {low && <AlertTriangle className="w-3 h-3" />}
+                          {p.stock} un
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-right text-slate-500 dark:text-slate-400">
                         {BRL(p.price * p.stock)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {isEditing ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={saveEdit}
-                              disabled={saving}
-                              className="w-7 h-7 rounded-lg bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 transition-colors"
-                            >
-                              <Check className="w-4 h-4" strokeWidth={2.5} />
-                            </button>
-                            <button
-                              onClick={() => setEditing(null)}
-                              className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
-                            >
-                              <X className="w-4 h-4" strokeWidth={2.5} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-1 ml-auto">
-                            <button
-                              onClick={() => startEdit(p)}
-                              disabled={readOnly}
-                              className="w-7 h-7 rounded-lg text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              <Edit3 className="w-4 h-4" strokeWidth={2} />
-                            </button>
-                            <button
-                              onClick={() => setDeleting(p)}
-                              disabled={readOnly}
-                              className="w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              <Trash2 className="w-4 h-4" strokeWidth={2} />
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center justify-end gap-1 ml-auto">
+                          <button
+                            onClick={() => startEdit(p)}
+                            disabled={readOnly}
+                            className="w-7 h-7 rounded-lg text-slate-400 hover:text-brand-teal-dark dark:hover:text-brand-teal-light hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Edit3 className="w-4 h-4" strokeWidth={2} />
+                          </button>
+                          <button
+                            onClick={() => setDeleting(p)}
+                            disabled={readOnly}
+                            className="w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Trash2 className="w-4 h-4" strokeWidth={2} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -257,6 +220,16 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
             setShowAdd(false);
             fetchProducts();
           }}
+        />
+      )}
+
+      {editing && (
+        <EditProductModal
+          product={editing}
+          saving={saving}
+          readOnly={readOnly}
+          onClose={() => setEditing(null)}
+          onSave={saveEdit}
         />
       )}
 
@@ -464,6 +437,159 @@ function AddProductModal({
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2.5} /> : <Check className="w-4 h-4" strokeWidth={2.5} />}
               {saving ? 'Salvando...' : 'Cadastrar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditProductModal({
+  product,
+  saving,
+  readOnly,
+  onClose,
+  onSave,
+}: {
+  product: Product;
+  saving: boolean;
+  readOnly?: boolean;
+  onClose: () => void;
+  onSave: (data: { name: string; category: string; price: string; stock: string }) => void;
+}) {
+  const [name, setName] = useState(product.name);
+  const [category, setCategory] = useState(product.category);
+  const [price, setPrice] = useState(String(product.price));
+  const [stock, setStock] = useState(String(product.stock));
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = name.trim();
+    const numPrice = parseFloat(price.replace(',', '.'));
+    const numStock = parseInt(stock, 10);
+
+    if (!trimmedName) {
+      setError('Informe o nome do produto.');
+      return;
+    }
+    if (Number.isNaN(numPrice) || numPrice < 0) {
+      setError('Informe um preço válido.');
+      return;
+    }
+    if (Number.isNaN(numStock) || numStock < 0) {
+      setError('Informe um estoque válido.');
+      return;
+    }
+    onSave({ name: trimmedName, category, price, stock });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
+      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-brand-teal/10 flex items-center justify-center">
+              <Edit3 className="w-5 h-5 text-brand-teal-dark dark:text-brand-teal-light" strokeWidth={2} />
+            </div>
+            <h3 className="font-semibold text-slate-900 dark:text-white">Editar Produto</h3>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={readOnly}
+            className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <X className="w-5 h-5" strokeWidth={2} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
+              Nome do produto
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ex.: Capa Silicone iPhone 16"
+              autoFocus
+              className="w-full px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
+              Categoria
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCategory(c)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all border ${
+                    category === c
+                      ? 'bg-brand-teal/10 border-brand-teal text-brand-teal-dark dark:text-brand-teal-light'
+                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300'
+                  }`}
+                >
+                  <CategoryIcon category={c} size="sm" />
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
+                Preço (R$)
+              </label>
+              <input
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0,00"
+                inputMode="decimal"
+                className="w-full px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
+                Estoque
+              </label>
+              <input
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
+                placeholder="0"
+                inputMode="numeric"
+                className="w-full px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-brand-teal transition-all"
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50">
+              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" strokeWidth={2} />
+              <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving || readOnly}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-brand-teal text-white font-medium text-sm shadow-sm hover:bg-brand-teal-dark disabled:opacity-60 transition-all active:scale-[0.98]"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2.5} /> : <Check className="w-4 h-4" strokeWidth={2.5} />}
+              {saving ? 'Salvando...' : 'Salvar Alterações'}
             </button>
           </div>
         </form>
