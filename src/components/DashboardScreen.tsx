@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ShoppingBag, DollarSign, Receipt, Loader2,
-  Printer, Ban, Filter, ChevronDown, X, CheckCircle2, XCircle,
+  Printer, Ban, Filter, ChevronDown, X, CheckCircle2, XCircle, FileSpreadsheet,
   EyeOff,
 } from 'lucide-react';
-import { supabase, type Sale, type SaleItem } from '@/lib/supabase';
+import { supabase, type Sale, type SaleItem, type StoreNiche, type WorkOrder } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 import AdminLockModal from '@/components/AdminLockModal';
 import ReceiptModal, { type ReceiptData } from '@/components/ReceiptModal';
+import { exportToExcel } from '@/lib/excelExport';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -53,6 +54,8 @@ export default function DashboardScreen() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<Sale | null>(null);
   const [lockModal, setLockModal] = useState<{ message: string; onUnlock: () => void } | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [niche, setNiche] = useState<StoreNiche>('eletronicos');
 
   const metricsLocked = hasSenha && !isAdminUnlocked;
 
@@ -77,6 +80,14 @@ export default function DashboardScreen() {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  useEffect(() => {
+    const deviceId = getDeviceInfo()?.id;
+    if (!deviceId) return;
+    void supabase.from('authorized_devices').select('nicho').eq('id', deviceId).maybeSingle().then(({ data }) => {
+      if (data?.nicho === 'auto_pecas' || data?.nicho === 'eletronicos' || data?.nicho === 'geral') setNiche(data.nicho);
+    });
+  }, []);
 
   // Period range
   const { from, to } = useMemo(() => {
@@ -122,6 +133,55 @@ export default function DashboardScreen() {
 
   const completed = filteredSales.filter((s) => s.status === 'COMPLETED');
   const cancelled = filteredSales.filter((s) => s.status === 'CANCELLED');
+
+  const exportSales = async () => {
+    setExporting(true);
+    try {
+      const deviceId = getDeviceInfo()?.id ?? '';
+      const { data: orders } = await supabase
+        .from('work_orders')
+        .select('id, order_number, customer_name, equipment_model, equipment_imei, total_amount, order_date, status')
+        .eq('device_id', deviceId)
+        .gte('created_at', from.toISOString())
+        .lte('created_at', to.toISOString());
+      const identificationHeader = niche === 'auto_pecas' ? 'Veículo / Placa' : niche === 'geral' ? 'Item / Ref' : 'Aparelho / IMEI';
+      const orderRows = ((orders as Pick<WorkOrder, 'id' | 'order_number' | 'customer_name' | 'equipment_model' | 'equipment_imei' | 'total_amount' | 'order_date' | 'status'>[]) ?? []).map((order) => ({
+        document: `OS #${order.order_number}`,
+        date: order.order_date ?? '',
+        type: 'OS',
+        customer: order.customer_name,
+        identification: [order.equipment_model, order.equipment_imei].filter(Boolean).join(' / '),
+        payment: '—',
+        products: 0,
+        services: Number(order.total_amount) || 0,
+        total: Number(order.total_amount) || 0,
+      }));
+      const salesRows = filteredSales.map((sale) => ({
+        document: `Venda #${sale.id.slice(0, 8)}`,
+        date: sale.created_at,
+        type: 'Venda Balcão',
+        customer: sale.customer_name ?? '—',
+        identification: '—',
+        payment: PAYMENT_LABELS[sale.payment_method] ?? sale.payment_method ?? '—',
+        products: Number(sale.subtotal) || 0,
+        services: 0,
+        total: Number(sale.total_amount) || 0,
+      }));
+      await exportToExcel('relatorio-vendas-os.xlsx', 'Vendas e OS', [
+        { header: 'Nº Documento/OS', key: 'document' },
+        { header: 'Data/Hora', key: 'date' },
+        { header: 'Tipo', key: 'type' },
+        { header: 'Cliente', key: 'customer' },
+        { header: identificationHeader, key: 'identification' },
+        { header: 'Forma de Pagamento', key: 'payment' },
+        { header: 'Valor Peças/Produtos (R$)', key: 'products', currency: true },
+        { header: 'Valor Serviços/Mão de Obra (R$)', key: 'services', currency: true },
+        { header: 'Valor Total (R$)', key: 'total', currency: true },
+      ], [...salesRows, ...orderRows]);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Sales metrics
   const totalRevenue = completed.reduce((s, x) => s + Number(x.total_amount), 0);
@@ -281,6 +341,14 @@ export default function DashboardScreen() {
               <X className="w-3.5 h-3.5" /> Limpar filtros
             </button>
           )}
+          <button
+            onClick={() => void exportSales()}
+            disabled={exporting}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-orange-400 text-white text-xs font-semibold hover:opacity-90 disabled:opacity-60"
+          >
+            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+            {exporting ? 'Exportando...' : 'Exportar Vendas'}
+          </button>
         </div>
       </div>
 

@@ -47,6 +47,8 @@ export type Product = {
 export type Category = {
   id: string;
   name: string;
+  nicho: StoreNiche | null;
+  store_id: string | null;
   created_at: string;
 };
 

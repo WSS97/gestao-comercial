@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Wallet, ArrowDownCircle, ArrowUpCircle, Loader2, Trash2, Plus,
-  Filter, RotateCcw, CalendarDays, CalendarRange, Calendar, ShoppingBag,
+  Filter, RotateCcw, CalendarDays, CalendarRange, Calendar, ShoppingBag, FileSpreadsheet,
 } from 'lucide-react';
 import { supabase, type FinancialTransaction, type Sale } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
 import { isDeviceReadOnlyNow } from '@/lib/readonly';
+import { exportToExcel } from '@/lib/excelExport';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -87,6 +88,7 @@ export default function FinanceiroScreen({ readOnly }: { readOnly?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // filter state
   const [filterMode, setFilterMode] = useState<FilterMode>('mes');
@@ -232,6 +234,31 @@ export default function FinanceiroScreen({ readOnly }: { readOnly?: boolean }) {
     });
   }, [filteredSales, filteredTransactions]);
 
+  const exportFinance = async () => {
+    setExporting(true);
+    try {
+      await exportToExcel('relatorio-financeiro.xlsx', 'Financeiro', [
+        { header: 'Data Vencimento/Pagamento', key: 'date' },
+        { header: 'Tipo', key: 'type' },
+        { header: 'Descrição', key: 'description' },
+        { header: 'Categoria Financeira', key: 'category' },
+        { header: 'Status', key: 'status' },
+        { header: 'Forma de Pagamento', key: 'payment' },
+        { header: 'Valor (R$)', key: 'amount', currency: true },
+      ], unifiedTransactions.map((transaction) => ({
+        date: transaction.date,
+        type: transaction.type === 'ENTRADA' ? 'Receita' : 'Despesa',
+        description: transaction.description,
+        category: transaction.category,
+        status: 'Pago',
+        payment: transaction.typeLabel === 'Venda PDV' ? transaction.description.split('·').pop()?.trim() ?? '—' : '—',
+        amount: transaction.amount,
+      })));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const parseAmount = (raw: string): number => {
     const cleaned = raw.replace(/\s/g, '').replace('R$', '').replace(/\./g, '').replace(',', '.');
     return parseFloat(cleaned) || 0;
@@ -329,6 +356,14 @@ export default function FinanceiroScreen({ readOnly }: { readOnly?: boolean }) {
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">Financeiro</h2>
           <p className="text-xs text-slate-400">Registre entradas e saídas do seu caixa</p>
         </div>
+        <button
+          onClick={() => void exportFinance()}
+          disabled={exporting}
+          className="ml-auto flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-400 text-white text-xs font-semibold hover:opacity-90 disabled:opacity-60"
+        >
+          {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+          {exporting ? 'Exportando...' : 'Exportar Relatório Financeiro'}
+        </button>
       </div>
 
       {/* Filter bar */}

@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Search, Package, Plus, Loader2, AlertTriangle, Edit3, X, Check, AlertCircle, Trash2, Tags,
 } from 'lucide-react';
-import { supabase, type Category, type Product } from '@/lib/supabase';
+import { supabase, type Category, type Product, type StoreNiche } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
 import { isDeviceReadOnlyNow } from '@/lib/readonly';
 import { CategoryIcon } from '@/components/CategoryIcon';
+import { exportToExcel } from '@/lib/excelExport';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -20,6 +21,9 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [storeNiche, setStoreNiche] = useState<StoreNiche>('eletronicos');
+  const [exporting, setExporting] = useState(false);
+  const storeId = getDeviceInfo()?.id ?? null;
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -38,21 +42,40 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
   }, [fetchProducts]);
 
   const fetchCategories = useCallback(async () => {
-    const { data } = await supabase.from('categories').select('id, name, created_at').order('name');
+    const device = getDeviceInfo();
+    const niche = device?.nicho ?? storeNiche;
+    const query = supabase.from('categories').select('id, name, nicho, store_id, created_at');
+    const { data } = await (device?.id
+      ? query.or(`nicho.eq.${niche},store_id.eq.${device.id}`).order('name')
+      : query.eq('nicho', niche).order('name'));
     setCategories((data as Category[]) ?? []);
-  }, []);
+  }, [storeNiche]);
 
   useEffect(() => {
     fetchCategories();
   }, [fetchCategories]);
+
+  useEffect(() => {
+    const device = getDeviceInfo();
+    if (!device?.id) return;
+    void supabase.from('authorized_devices').select('nicho').eq('id', device.id).maybeSingle().then(({ data }) => {
+      if (data?.nicho === 'auto_pecas' || data?.nicho === 'eletronicos' || data?.nicho === 'geral') setStoreNiche(data.nicho);
+    });
+    const handleNicheChanged = (event: Event) => {
+      const value = (event as CustomEvent<StoreNiche>).detail;
+      if (value === 'auto_pecas' || value === 'eletronicos' || value === 'geral') setStoreNiche(value);
+    };
+    window.addEventListener('store-niche-changed', handleNicheChanged);
+    return () => window.removeEventListener('store-niche-changed', handleNicheChanged);
+  }, []);
 
   const createCategory = async (name: string) => {
     const cleanName = name.trim();
     if (!cleanName) return null;
     const { data, error } = await supabase
       .from('categories')
-      .insert({ name: cleanName })
-      .select('id, name, created_at')
+      .insert({ name: cleanName, store_id: storeId, nicho: null })
+      .select('id, name, nicho, store_id, created_at')
       .single();
     if (error || !data) return null;
     const category = data as Category;
@@ -70,6 +93,31 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
 
   const startEdit = (p: Product) => {
     setEditing(p);
+  };
+
+  const exportStock = async () => {
+    setExporting(true);
+    try {
+      await exportToExcel('relatorio-estoque.xlsx', 'Estoque', [
+        { header: 'Código/SKU', key: 'code' },
+        { header: 'Descrição/Produto', key: 'name' },
+        { header: 'Categoria', key: 'category' },
+        { header: 'Quantidade em Estoque', key: 'stock' },
+        { header: 'Preço Custo (R$)', key: 'cost', currency: true },
+        { header: 'Preço Venda (R$)', key: 'price', currency: true },
+        { header: 'Subtotal em Custo (R$)', key: 'costSubtotal', currency: true },
+      ], filtered.map((product) => ({
+        code: product.code ?? '',
+        name: product.name,
+        category: product.category ?? '',
+        stock: product.stock,
+        cost: 0,
+        price: product.price,
+        costSubtotal: 0,
+      })));
+    } finally {
+      setExporting(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -154,6 +202,14 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
         >
           <Tags className="w-4 h-4" strokeWidth={2} />
           Categorias
+        </button>
+        <button
+          onClick={() => void exportStock()}
+          disabled={exporting}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-orange-400 text-white font-medium text-sm hover:opacity-90 transition-all whitespace-nowrap disabled:opacity-60"
+        >
+          {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
+          {exporting ? 'Exportando...' : 'Exportar Excel'}
         </button>
       </div>
 
@@ -277,6 +333,7 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
           onRefresh={fetchCategories}
           onProductsRefresh={fetchProducts}
           onCreate={createCategory}
+          storeId={storeId}
         />
       )}
 
@@ -703,6 +760,7 @@ function CategoriesModal({
   onRefresh,
   onProductsRefresh,
   onCreate,
+  storeId,
 }: {
   categories: Category[];
   products: Product[];
@@ -711,6 +769,7 @@ function CategoriesModal({
   onRefresh: () => Promise<void>;
   onProductsRefresh: () => Promise<void>;
   onCreate: (name: string) => Promise<Category | null>;
+  storeId: string | null;
 }) {
   const [name, setName] = useState('');
   const [editing, setEditing] = useState<Category | null>(null);
@@ -723,14 +782,14 @@ function CategoriesModal({
     setSaving(true);
     setError('');
     let operationError = false;
-    if (editing) {
+    if (editing && editing.store_id === storeId) {
       const { error: updateError } = await supabase.from('categories').update({ name: cleanName }).eq('id', editing.id);
-      if (!updateError) await supabase.from('products').update({ category: cleanName }).eq('category_id', editing.id);
+      if (!updateError) await supabase.from('products').update({ category: cleanName }).eq('category_id', editing.id).eq('device_id', storeId ?? '');
       if (updateError) {
         operationError = true;
         setError('Não foi possível atualizar a categoria.');
       }
-    } else {
+    } else if (!editing) {
       const created = await onCreate(cleanName);
       if (!created) {
         operationError = true;
@@ -747,10 +806,10 @@ function CategoriesModal({
   };
 
   const remove = async (category: Category) => {
-    if (readOnly) return;
+    if (readOnly || category.store_id !== storeId) return;
     setSaving(true);
-    await supabase.from('products').update({ category: null, category_id: null }).eq('category_id', category.id);
-    const { error: deleteError } = await supabase.from('categories').delete().eq('id', category.id);
+    await supabase.from('products').update({ category: null, category_id: null }).eq('category_id', category.id).eq('device_id', storeId ?? '');
+    const { error: deleteError } = await supabase.from('categories').delete().eq('id', category.id).eq('store_id', storeId ?? '');
     if (deleteError) setError('Não foi possível excluir a categoria.');
     await onRefresh();
     await onProductsRefresh();
@@ -773,7 +832,8 @@ function CategoriesModal({
           <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
             {categories.map((category) => {
               const count = products.filter((product) => product.category_id === category.id).length;
-              return <div key={category.id} className="flex items-center gap-3 px-3 py-2.5"><CategoryIcon category={category.name} size="sm" /><span className="flex-1 text-sm text-slate-800 dark:text-slate-200">{category.name}<span className="ml-2 text-xs text-slate-400">{count} produto(s)</span></span><button onClick={() => { setEditing(category); setName(category.name); }} disabled={readOnly} className="p-1.5 text-slate-400 hover:text-brand-teal disabled:opacity-40"><Edit3 className="w-4 h-4" /></button><button onClick={() => void remove(category)} disabled={saving || readOnly} className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-40"><Trash2 className="w-4 h-4" /></button></div>;
+              const custom = category.store_id === storeId;
+              return <div key={category.id} className="flex items-center gap-3 px-3 py-2.5"><CategoryIcon category={category.name} size="sm" /><span className="flex-1 text-sm text-slate-800 dark:text-slate-200">{category.name}<span className={`ml-2 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${custom ? 'bg-brand-teal/10 text-brand-teal-dark dark:text-brand-teal-light' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{custom ? 'Personalizada' : 'Padrão do sistema'}</span><span className="ml-2 text-xs text-slate-400">{count} produto(s)</span></span><button onClick={() => { if (custom) { setEditing(category); setName(category.name); } }} disabled={readOnly || !custom} title={custom ? 'Editar categoria' : 'Categoria padrão'} className="p-1.5 text-slate-400 hover:text-brand-teal disabled:opacity-40"><Edit3 className="w-4 h-4" /></button><button onClick={() => void remove(category)} disabled={saving || readOnly || !custom} title={custom ? 'Excluir categoria' : 'Categoria padrão'} className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-40"><Trash2 className="w-4 h-4" /></button></div>;
             })}
             {categories.length === 0 && <p className="px-3 py-6 text-center text-sm text-slate-400">Nenhuma categoria cadastrada.</p>}
           </div>
