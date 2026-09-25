@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Settings, X, Eye, EyeOff, Loader2, Lock, ShieldCheck, MessageCircle, AlertCircle, CheckCircle2,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase, type StoreNiche } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
 import { useAdminAuth } from '@/context/AdminAuthContext';
 
@@ -22,6 +22,33 @@ export default function SecuritySettingsModal({ onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [niche, setNiche] = useState<StoreNiche>('eletronicos');
+  const [nicheSaving, setNicheSaving] = useState(false);
+  const [nicheMessage, setNicheMessage] = useState('');
+
+  useEffect(() => {
+    const deviceId = getDeviceInfo()?.id;
+    if (!deviceId) return;
+    void supabase.from('authorized_devices').select('nicho').eq('id', deviceId).maybeSingle().then(({ data }) => {
+      if (data?.nicho === 'eletronicos' || data?.nicho === 'auto_pecas' || data?.nicho === 'geral') setNiche(data.nicho);
+    });
+  }, []);
+
+  const handleNicheChange = async (value: StoreNiche) => {
+    const deviceId = getDeviceInfo()?.id;
+    if (!deviceId) return;
+    setNiche(value);
+    setNicheSaving(true);
+    setNicheMessage('');
+    const { error: updateError } = await supabase.from('authorized_devices').update({ nicho: value }).eq('id', deviceId);
+    setNicheSaving(false);
+    if (updateError) {
+      setNicheMessage('Não foi possível salvar o nicho.');
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('store-niche-changed', { detail: value }));
+    setNicheMessage('Nicho salvo.');
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +134,21 @@ export default function SecuritySettingsModal({ onClose }: Props) {
 
         {/* Body */}
         <div className="p-5 overflow-y-auto">
+          <div className="mb-5 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700">
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">Nicho da loja</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 mb-3">Define os rótulos de identificação nos documentos.</p>
+            <select
+              value={niche}
+              onChange={(event) => void handleNicheChange(event.target.value as StoreNiche)}
+              disabled={nicheSaving}
+              className="w-full px-3 py-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand-teal disabled:opacity-60"
+            >
+              <option value="eletronicos">Eletrônicos</option>
+              <option value="auto_pecas">Auto peças</option>
+              <option value="geral">Geral</option>
+            </select>
+            {nicheMessage && <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">{nicheMessage}</p>}
+          </div>
           {success && (
             <div className="flex items-center gap-2.5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 mb-4">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" strokeWidth={2} />

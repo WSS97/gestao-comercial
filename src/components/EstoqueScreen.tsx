@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Search, Package, Plus, Loader2, AlertTriangle, Edit3, X, Check, AlertCircle, Trash2,
+  Search, Package, Plus, Loader2, AlertTriangle, Edit3, X, Check, AlertCircle, Trash2, Tags,
 } from 'lucide-react';
-import { supabase, type Product } from '@/lib/supabase';
+import { supabase, type Category, type Product } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
 import { isDeviceReadOnlyNow } from '@/lib/readonly';
-import { CategoryIcon, CATEGORIES } from '@/components/CategoryIcon';
+import { CategoryIcon } from '@/components/CategoryIcon';
 
 const BRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -18,13 +18,15 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
   const [showAdd, setShowAdd] = useState(false);
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     const device = getDeviceInfo();
     const { data } = await supabase
       .from('products')
-      .select('id, name, price, stock, category, code, device_id, created_at')
+      .select('id, name, price, stock, category, category_id, code, device_id, created_at')
       .eq('device_id', device?.id ?? '')
       .order('name');
     setProducts((data as Product[]) ?? []);
@@ -35,6 +37,29 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
     fetchProducts();
   }, [fetchProducts]);
 
+  const fetchCategories = useCallback(async () => {
+    const { data } = await supabase.from('categories').select('id, name, created_at').order('name');
+    setCategories((data as Category[]) ?? []);
+  }, []);
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  const createCategory = async (name: string) => {
+    const cleanName = name.trim();
+    if (!cleanName) return null;
+    const { data, error } = await supabase
+      .from('categories')
+      .insert({ name: cleanName })
+      .select('id, name, created_at')
+      .single();
+    if (error || !data) return null;
+    const category = data as Category;
+    setCategories((prev) => [...prev, category].sort((a, b) => a.name.localeCompare(b.name)));
+    return category;
+  };
+
   const filtered = products.filter((p) => {
     const q = search.trim().toLowerCase();
     return p.name.toLowerCase().includes(q) || (p.code ?? '').toLowerCase().includes(q);
@@ -42,7 +67,6 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
 
   const lowStock = products.filter((p) => p.stock <= 5).length;
   const totalItems = products.reduce((s, p) => s + p.stock, 0);
-  const stockValue = products.reduce((s, p) => s + p.price * p.stock, 0);
 
   const startEdit = (p: Product) => {
     setEditing(p);
@@ -63,7 +87,7 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
     setDeleting(null);
   };
 
-  const saveEdit = async (data: { name: string; category: string; price: string; stock: string }) => {
+  const saveEdit = async (data: { name: string; categoryId: string; price: string; stock: string }) => {
     if (!editing || readOnly) return;
     setSaving(true);
     const device = getDeviceInfo();
@@ -73,7 +97,7 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
       return;
     }
     const newName = data.name.trim();
-    const newCategory = data.category;
+    const selectedCategory = categories.find((category) => category.id === data.categoryId);
     const newStock = parseInt(data.stock, 10);
     const newPrice = parseFloat(data.price.replace(',', '.'));
     if (!newName || Number.isNaN(newStock) || Number.isNaN(newPrice)) {
@@ -82,10 +106,10 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
     }
     await supabase
       .from('products')
-      .update({ name: newName, category: newCategory, stock: newStock, price: newPrice })
+      .update({ name: newName, category_id: data.categoryId || null, category: selectedCategory?.name ?? null, stock: newStock, price: newPrice })
       .eq('id', editing.id);
     setProducts((prev) =>
-      prev.map((p) => (p.id === editing.id ? { ...p, name: newName, category: newCategory, stock: newStock, price: newPrice } : p))
+      prev.map((p) => (p.id === editing.id ? { ...p, name: newName, category_id: data.categoryId || null, category: selectedCategory?.name ?? null, stock: newStock, price: newPrice } : p))
     );
     setEditing(null);
     setSaving(false);
@@ -123,6 +147,13 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
         >
           <Plus className="w-4 h-4" strokeWidth={2.5} />
           Cadastrar Produto
+        </button>
+        <button
+          onClick={() => setCategoriesOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-medium text-sm hover:border-brand-teal hover:text-brand-teal-dark transition-all whitespace-nowrap"
+        >
+          <Tags className="w-4 h-4" strokeWidth={2} />
+          Categorias
         </button>
       </div>
 
@@ -215,6 +246,8 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
 
       {showAdd && (
         <AddProductModal
+          categories={categories}
+          onCreateCategory={createCategory}
           onClose={() => setShowAdd(false)}
           onSaved={() => {
             setShowAdd(false);
@@ -226,10 +259,24 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
       {editing && (
         <EditProductModal
           product={editing}
+          categories={categories}
+          onCreateCategory={createCategory}
           saving={saving}
           readOnly={readOnly}
           onClose={() => setEditing(null)}
           onSave={saveEdit}
+        />
+      )}
+
+      {categoriesOpen && (
+        <CategoriesModal
+          categories={categories}
+          products={products}
+          readOnly={readOnly}
+          onClose={() => setCategoriesOpen(false)}
+          onRefresh={fetchCategories}
+          onProductsRefresh={fetchProducts}
+          onCreate={createCategory}
         />
       )}
 
@@ -273,9 +320,13 @@ export default function EstoqueScreen({ readOnly }: { readOnly?: boolean }) {
 }
 
 function AddProductModal({
+  categories,
+  onCreateCategory,
   onClose,
   onSaved,
 }: {
+  categories: Category[];
+  onCreateCategory: (name: string) => Promise<Category | null>;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -283,7 +334,7 @@ function AddProductModal({
   const [code, setCode] = useState('');
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0] ?? 'Acessórios');
+  const [categoryId, setCategoryId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -311,7 +362,15 @@ function AddProductModal({
     const device = getDeviceInfo();
     const { error: insertError } = await supabase
       .from('products')
-      .insert({ name: trimmedName, code: code.trim() || null, price: numPrice, stock: numStock, category, device_id: device?.id ?? null });
+      .insert({
+        name: trimmedName,
+        code: code.trim() || null,
+        price: numPrice,
+        stock: numStock,
+        category_id: categoryId || null,
+        category: categories.find((item) => item.id === categoryId)?.name ?? null,
+        device_id: device?.id ?? null,
+      });
     setSaving(false);
 
     if (insertError) {
@@ -369,23 +428,7 @@ function AddProductModal({
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
               Categoria
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {CATEGORIES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setCategory(c)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all border ${
-                    category === c
-                      ? 'bg-brand-teal/10 border-brand-teal text-brand-teal-dark dark:text-brand-teal-light'
-                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300'
-                  }`}
-                >
-                  <CategoryIcon category={c} size="sm" />
-                  {c}
-                </button>
-              ))}
-            </div>
+            <CategorySelect categories={categories} value={categoryId} onChange={setCategoryId} onCreate={onCreateCategory} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -447,19 +490,23 @@ function AddProductModal({
 
 function EditProductModal({
   product,
+  categories,
+  onCreateCategory,
   saving,
   readOnly,
   onClose,
   onSave,
 }: {
   product: Product;
+  categories: Category[];
+  onCreateCategory: (name: string) => Promise<Category | null>;
   saving: boolean;
   readOnly?: boolean;
   onClose: () => void;
-  onSave: (data: { name: string; category: string; price: string; stock: string }) => void;
+  onSave: (data: { name: string; categoryId: string; price: string; stock: string }) => void;
 }) {
   const [name, setName] = useState(product.name);
-  const [category, setCategory] = useState(product.category);
+  const [categoryId, setCategoryId] = useState(product.category_id ?? '');
   const [price, setPrice] = useState(String(product.price));
   const [stock, setStock] = useState(String(product.stock));
   const [error, setError] = useState('');
@@ -482,7 +529,7 @@ function EditProductModal({
       setError('Informe um estoque válido.');
       return;
     }
-    onSave({ name: trimmedName, category, price, stock });
+    onSave({ name: trimmedName, categoryId, price, stock });
   };
 
   return (
@@ -522,23 +569,7 @@ function EditProductModal({
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
               Categoria
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {CATEGORIES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setCategory(c)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all border ${
-                    category === c
-                      ? 'bg-brand-teal/10 border-brand-teal text-brand-teal-dark dark:text-brand-teal-light'
-                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300'
-                  }`}
-                >
-                  <CategoryIcon category={c} size="sm" />
-                  {c}
-                </button>
-              ))}
-            </div>
+            <CategorySelect categories={categories} value={categoryId} onChange={setCategoryId} onCreate={onCreateCategory} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -593,6 +624,160 @@ function EditProductModal({
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function CategorySelect({
+  categories,
+  value,
+  onChange,
+  onCreate,
+}: {
+  categories: Category[];
+  value: string;
+  onChange: (value: string) => void;
+  onCreate: (name: string) => Promise<Category | null>;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const create = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    const category = await onCreate(name);
+    if (category) {
+      onChange(category.id);
+      setName('');
+      setCreating(false);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="min-w-0 flex-1 px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand-teal transition-all"
+        >
+          <option value="">Sem categoria</option>
+          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </select>
+        <button
+          type="button"
+          onClick={() => setCreating((current) => !current)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-brand-teal/40 text-brand-teal-dark dark:text-brand-teal-light text-xs font-semibold hover:bg-brand-teal/10 whitespace-nowrap"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Nova Categoria
+        </button>
+      </div>
+      {creating && (
+        <div className="flex gap-2">
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void create(); } }}
+            placeholder="Nome da nova categoria"
+            autoFocus
+            className="min-w-0 flex-1 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand-teal"
+          />
+          <button type="button" onClick={() => void create()} disabled={saving} className="px-3 rounded-lg bg-brand-teal text-white text-xs font-semibold disabled:opacity-60">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Criar'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CategoriesModal({
+  categories,
+  products,
+  readOnly,
+  onClose,
+  onRefresh,
+  onProductsRefresh,
+  onCreate,
+}: {
+  categories: Category[];
+  products: Product[];
+  readOnly?: boolean;
+  onClose: () => void;
+  onRefresh: () => Promise<void>;
+  onProductsRefresh: () => Promise<void>;
+  onCreate: (name: string) => Promise<Category | null>;
+}) {
+  const [name, setName] = useState('');
+  const [editing, setEditing] = useState<Category | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    const cleanName = name.trim();
+    if (!cleanName || readOnly) return;
+    setSaving(true);
+    setError('');
+    let operationError = false;
+    if (editing) {
+      const { error: updateError } = await supabase.from('categories').update({ name: cleanName }).eq('id', editing.id);
+      if (!updateError) await supabase.from('products').update({ category: cleanName }).eq('category_id', editing.id);
+      if (updateError) {
+        operationError = true;
+        setError('Não foi possível atualizar a categoria.');
+      }
+    } else {
+      const created = await onCreate(cleanName);
+      if (!created) {
+        operationError = true;
+        setError('Não foi possível criar a categoria.');
+      }
+    }
+    if (!operationError) {
+      await onRefresh();
+      await onProductsRefresh();
+      setName('');
+      setEditing(null);
+    }
+    setSaving(false);
+  };
+
+  const remove = async (category: Category) => {
+    if (readOnly) return;
+    setSaving(true);
+    await supabase.from('products').update({ category: null, category_id: null }).eq('category_id', category.id);
+    const { error: deleteError } = await supabase.from('categories').delete().eq('id', category.id);
+    if (deleteError) setError('Não foi possível excluir a categoria.');
+    await onRefresh();
+    await onProductsRefresh();
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
+      <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-2.5"><Tags className="w-5 h-5 text-brand-teal-dark dark:text-brand-teal-light" /><h3 className="font-semibold text-slate-900 dark:text-white">Gerenciar Categorias</h3></div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="flex gap-2">
+            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome da categoria" className="min-w-0 flex-1 px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-brand-teal" />
+            <button onClick={() => void save()} disabled={saving || readOnly} className="flex items-center gap-1.5 px-3 rounded-lg bg-brand-teal text-white text-sm font-medium disabled:opacity-50"><Check className="w-4 h-4" />{editing ? 'Salvar' : 'Adicionar'}</button>
+          </div>
+          {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+          <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+            {categories.map((category) => {
+              const count = products.filter((product) => product.category_id === category.id).length;
+              return <div key={category.id} className="flex items-center gap-3 px-3 py-2.5"><CategoryIcon category={category.name} size="sm" /><span className="flex-1 text-sm text-slate-800 dark:text-slate-200">{category.name}<span className="ml-2 text-xs text-slate-400">{count} produto(s)</span></span><button onClick={() => { setEditing(category); setName(category.name); }} disabled={readOnly} className="p-1.5 text-slate-400 hover:text-brand-teal disabled:opacity-40"><Edit3 className="w-4 h-4" /></button><button onClick={() => void remove(category)} disabled={saving || readOnly} className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-40"><Trash2 className="w-4 h-4" /></button></div>;
+            })}
+            {categories.length === 0 && <p className="px-3 py-6 text-center text-sm text-slate-400">Nenhuma categoria cadastrada.</p>}
+          </div>
+        </div>
       </div>
     </div>
   );

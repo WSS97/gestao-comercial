@@ -27,16 +27,26 @@ export type AuthorizedDevice = {
   terms_accepted?: boolean | null;
   terms_accepted_at?: string | null;
   terms_version?: string | null;
+  nicho?: StoreNiche;
 };
+
+export type StoreNiche = 'eletronicos' | 'auto_pecas' | 'geral';
 
 export type Product = {
   id: string;
   name: string;
   price: number;
   stock: number;
-  category: string;
+  category: string | null;
+  category_id?: string | null;
   code?: string | null;
   device_id?: string | null;
+  created_at: string;
+};
+
+export type Category = {
+  id: string;
+  name: string;
   created_at: string;
 };
 

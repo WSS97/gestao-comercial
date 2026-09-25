@@ -4,7 +4,7 @@ import {
   User, Smartphone, Shield, Search, Ban, Eye, Package, Pencil, AlertTriangle,
 } from 'lucide-react';
 import {
-  supabase, type WorkOrder, type WorkOrderItem, type AuthorizedDevice, type Product,
+  supabase, type WorkOrder, type WorkOrderItem, type AuthorizedDevice, type Product, type StoreNiche,
 } from '@/lib/supabase';
 import { getDeviceInfo } from '@/lib/auth';
 
@@ -34,6 +34,12 @@ const DEFAULT_WARRANTY = `1. Prazo de Garantia: 90 dias a contar desta data (ou 
 - Qualquer dano causado por mau uso em geral.`;
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const NICHE_LABELS: Record<StoreNiche, { first: string; second: string; section: string }> = {
+  eletronicos: { first: 'Aparelho / Modelo', second: 'IMEI / Nº de Série', section: 'Equipamento' },
+  auto_pecas: { first: 'Veículo / Modelo', second: 'Placa / KM', section: 'Veículo' },
+  geral: { first: 'Item / Descrição', second: 'Identificador / Cód.', section: 'Item' },
+};
 
 type FormState = {
   customer_name: string;
@@ -102,6 +108,7 @@ export default function WorkOrdersScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteOrder, setDeleteOrder] = useState<WorkOrder | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [niche, setNiche] = useState<StoreNiche>('eletronicos');
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -141,6 +148,7 @@ export default function WorkOrdersScreen() {
 
       if (data) {
         setCompany(data);
+        if (data.nicho === 'eletronicos' || data.nicho === 'auto_pecas' || data.nicho === 'geral') setNiche(data.nicho);
       }
     } catch (err) {
       console.error('Falha ao buscar empresa:', err);
@@ -148,6 +156,12 @@ export default function WorkOrdersScreen() {
   }
 
   loadCompanyData();
+  const handleNicheChanged = (event: Event) => {
+    const value = (event as CustomEvent<StoreNiche>).detail;
+    if (value === 'eletronicos' || value === 'auto_pecas' || value === 'geral') setNiche(value);
+  };
+  window.addEventListener('store-niche-changed', handleNicheChanged);
+  return () => window.removeEventListener('store-niche-changed', handleNicheChanged);
 }, [fetchOrders]);
 
   const itemsSubtotal = form.items.reduce((s, i) => s + itemSubtotal(i), 0);
@@ -480,6 +494,7 @@ export default function WorkOrdersScreen() {
           saving={saving}
           error={error}
           editingId={editingId}
+          niche={niche}
         />
       )}
 
@@ -523,7 +538,7 @@ export default function WorkOrdersScreen() {
 
       {/* Print preview */}
       {printOrder && (
-        <PrintPreview order={printOrder} company={company} onClose={() => setPrintOrder(null)} />
+        <PrintPreview order={printOrder} company={company} niche={niche} onClose={() => setPrintOrder(null)} />
       )}
     </div>
   );
@@ -536,6 +551,7 @@ function WorkOrderForm({
   itemsSubtotal, totalDiscount, total,
   updateItem, addItem, removeItem,
   onSubmit, onClose, saving, error, editingId,
+  niche,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
@@ -552,8 +568,10 @@ function WorkOrderForm({
   saving: boolean;
   error: string;
   editingId: string | null;
+  niche: StoreNiche;
 }) {
   const totalDiscountOpen = form.total_discount_value !== '';
+  const labels = NICHE_LABELS[niche];
   const toggleTotalDiscount = () => {
     setForm((f) => ({
       ...f,
@@ -658,22 +676,22 @@ function WorkOrderForm({
           </Section>
 
           {/* Equipment */}
-          <Section icon={Smartphone} title="Equipamento">
+          <Section icon={Smartphone} title={labels.section}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Modelo">
+              <Field label={labels.first}>
                 <input
                   value={form.equipment_model}
                   onChange={(e) => setForm((f) => ({ ...f, equipment_model: e.target.value }))}
                   className={inputCls}
-                  placeholder="Ex.: iPhone 13 128GB"
+                  placeholder={niche === 'auto_pecas' ? 'Ex.: Honda Civic 2020' : niche === 'geral' ? 'Ex.: Produto ou equipamento' : 'Ex.: iPhone 13 128GB'}
                 />
               </Field>
-              <Field label="IMEI / N° de Série">
+              <Field label={labels.second}>
                 <input
                   value={form.equipment_imei}
                   onChange={(e) => setForm((f) => ({ ...f, equipment_imei: e.target.value }))}
                   className={inputCls}
-                  placeholder="000000000000000"
+                  placeholder={niche === 'auto_pecas' ? 'Ex.: ABC-1D23 / 120.000 km' : niche === 'geral' ? 'Ex.: Cód. 000123' : '000000000000000'}
                 />
               </Field>
               <Field label="Defeito / Observação" full>
@@ -1113,13 +1131,16 @@ function SignaturePad({ value, onChange }: { value: string | null; onChange: (s:
 function PrintPreview({
   order,
   company,
+  niche,
   onClose,
 }: {
   order: WorkOrder;
   company: AuthorizedDevice | null;
+  niche: StoreNiche;
   onClose: () => void;
 }) {
   const items = (order.items_json ?? []) as WorkOrderItem[];
+  const labels = NICHE_LABELS[niche];
 
   // Fallbacks para garantir que as informações do emissor sempre apareçam
   const companyName = company?.device_name || 'CELULAR TECH';
@@ -1254,10 +1275,10 @@ function PrintPreview({
               {/* Equipamento */}
               {(order.equipment_model || order.equipment_imei || order.defect_notes) && (
                 <div style={{ marginTop: '12px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Equipamento / Aparelho</div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>{labels.section}</div>
                   <div className="info-grid">
-                    {order.equipment_model && <div><span className="label">Modelo: </span><span className="value">{order.equipment_model}</span></div>}
-                    {order.equipment_imei && <div><span className="label">IMEI / Nº Série: </span><span className="value">{order.equipment_imei}</span></div>}
+                    {order.equipment_model && <div><span className="label">{labels.first}: </span><span className="value">{order.equipment_model}</span></div>}
+                    {order.equipment_imei && <div><span className="label">{labels.second}: </span><span className="value">{order.equipment_imei}</span></div>}
                   </div>
                   {order.defect_notes && <div className="notes"><strong>Defeito/Observação:</strong> {order.defect_notes}</div>}
                 </div>

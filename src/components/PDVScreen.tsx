@@ -61,7 +61,7 @@ export default function PDVScreen({ readOnly }: { readOnly?: boolean }) {
   }, [fetchProducts]);
 
   const categories = useMemo(() => {
-    const set = new Set(products.map((p) => p.category));
+    const set = new Set(products.map((p) => p.category).filter((value): value is string => Boolean(value)));
     return ['all', ...Array.from(set)];
   }, [products]);
 
